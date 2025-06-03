@@ -34,7 +34,7 @@ int main() {
         std::cout << std::endl;
     };
 
-    std::srand(std::time(nullptr)); // Seed random number generator for random events
+    std::srand(std::time(nullptr)); // Seed random number generator for random events.
 
     std::cout << "Welcome to the C++ Nuclear Reactor Simulator v0.1\n";
     std::cout << "Try not to melt the core. Type 'q' to quit.\n";
