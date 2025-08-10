@@ -1,0 +1,27 @@
+# Compiled executables
+reactor
+reactor.exe
+*.out
+*.app
+
+# Debug symbols
+*.dSYM/
+*.pdb
+
+# Object files
+*.o
+*.obj
+
+# IDE folders
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build directories
+build/
+cmake-build-*/
+
+# OS generated files
+.DS_Store
+Thumbs.db
