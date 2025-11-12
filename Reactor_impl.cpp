@@ -2,26 +2,26 @@
 #include "Constants.h"
 #include <algorithm>
 
-Reactor::Reactor() 
-    : neutrons(1000.0),
-      controlRods(0.5),
-      temperature(300.0),
-      coolant(100.0),
-      power(0.0),
-      fuel(100.0),
+Reactor::Reactor()
+    : neutrons(INITIAL_NEUTRONS),
+      controlRods(INITIAL_CONTROL_RODS),
+      temperature(INITIAL_TEMPERATURE),
+      coolant(INITIAL_COOLANT),
+      power(INITIAL_POWER),
+      fuel(INITIAL_FUEL),
       running(true) {
 }
 
 void Reactor::setControlRods(double level) {
-    controlRods = std::min(1.0, std::max(0.0, level));
+    controlRods = std::min(MAX_CONTROL_RODS, std::max(MIN_CONTROL_RODS, level));
 }
 
 void Reactor::refillCoolant() {
-    coolant = 100.0;
+    coolant = MAX_COOLANT;
 }
 
 void Reactor::consumeFuel(double amount) {
-    fuel = std::max(0.0, fuel - amount);
+    fuel = std::max(MIN_FUEL, fuel - amount);
 }
 
 void Reactor::updateNeutrons(double factor) {
@@ -36,7 +36,7 @@ void Reactor::updateTemperature(double delta) {
 }
 
 void Reactor::updateCoolant(double delta) {
-    coolant = std::min(100.0, std::max(0.0, coolant + delta));
+    coolant = std::min(MAX_COOLANT, std::max(MIN_FUEL, coolant + delta));
 }
 
 void Reactor::setPower(double p) {
@@ -44,19 +44,19 @@ void Reactor::setPower(double p) {
 }
 
 void Reactor::scram() {
-    controlRods = 1.0;
-    neutrons *= 0.05;
-    updateTemperature(-200);
+    controlRods = SCRAM_CONTROL_RODS;
+    neutrons *= SCRAM_NEUTRON_FACTOR;
+    updateTemperature(SCRAM_COOLING_DELTA);
     running = false;
 }
 
 void Reactor::reset() {
-    neutrons = 1000.0;
-    controlRods = 0.5;
-    temperature = 300.0;
-    coolant = 100.0;
-    power = 0.0;
-    fuel = 100.0;
+    neutrons = INITIAL_NEUTRONS;
+    controlRods = INITIAL_CONTROL_RODS;
+    temperature = INITIAL_TEMPERATURE;
+    coolant = INITIAL_COOLANT;
+    power = INITIAL_POWER;
+    fuel = INITIAL_FUEL;
     running = true;
 }
 

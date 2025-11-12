@@ -2,11 +2,6 @@
 #include "Constants.h"
 #include <algorithm>
 
-// Maximum neutron count to prevent overflow
-const double MAX_NEUTRONS = 10000.0;
-// Minimum fuel efficiency to prevent complete neutron death
-const double MIN_FUEL_EFF = 0.1;
-
 PhysicsStatus PhysicsEngine::updateReactor(Reactor& reactor) {
     PhysicsStatus status = {false, false};
 
@@ -25,7 +20,7 @@ PhysicsStatus PhysicsEngine::updateReactor(Reactor& reactor) {
 
     // Apply fuel effects with minimum efficiency to prevent complete shutdown
     double fuel_eff = reactor.getFuel() / 100.0;
-    fuel_eff = std::max(MIN_FUEL_EFF, fuel_eff);
+    fuel_eff = std::max(MIN_FUEL_EFFICIENCY, fuel_eff);
     reactor.updateNeutrons(fuel_eff);
     applyFuelBurnup(reactor);
 
