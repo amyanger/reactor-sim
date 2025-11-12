@@ -18,7 +18,7 @@ private:
     RandomEvents events;
     
     bool processUserInput(const std::string& input);
-    void handleScramRecovery();
+    bool handleScramRecovery();
 };
 
 #endif

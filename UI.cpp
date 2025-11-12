@@ -38,7 +38,11 @@ std::string UI::getUserInput() const {
 
 double UI::parseControlRodInput(const std::string& input) const {
     try {
-        return std::stod(input) / 100.0;
+        double value = std::stod(input);
+        if (value < 0.0 || value > 100.0) {
+            throw std::out_of_range("Value must be between 0 and 100!");
+        }
+        return value / 100.0;
     } catch (const std::invalid_argument& e) {
         throw std::invalid_argument("Invalid input! Please enter a number between 0-100.");
     } catch (const std::out_of_range& e) {

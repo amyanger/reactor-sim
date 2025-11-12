@@ -18,16 +18,27 @@ void GameController::run() {
             }
             
             if (reactor.isRunning()) {
-                physics.updateReactor(reactor);
+                PhysicsStatus status = physics.updateReactor(reactor);
+
+                // Display physics warnings
+                if (status.lowCoolantWarning) {
+                    std::cout << "!!! WARNING: Coolant is critically low! !!!\n";
+                }
+                if (status.scramTriggered) {
+                    std::cout << "\n*** AUTO SCRAM! Emergency shutdown! ***\n";
+                }
+
                 events.checkAndApply(reactor);
-                
+
                 if (reactor.checkMeltdown()) {
                     ui.displayMeltdown();
                     break;
                 }
             }
         } else {
-            handleScramRecovery();
+            if (!handleScramRecovery()) {
+                break;  // User quit
+            }
         }
     }
     
@@ -55,15 +66,17 @@ bool GameController::processUserInput(const std::string& input) {
     return true;
 }
 
-void GameController::handleScramRecovery() {
+bool GameController::handleScramRecovery() {
     std::cout << "Type 'reset' to attempt reactor restart, or 'q' to quit: ";
     std::string input;
     std::getline(std::cin, input);
-    
+
     if (input == "reset") {
         std::cout << "Reactor restart attempt...\n";
         reactor.reset();
+        return true;
     } else if (input == "q") {
-        std::exit(0);
+        return false;
     }
+    return true;
 }
