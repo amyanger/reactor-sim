@@ -1,4 +1,5 @@
 #include "RandomEvents.h"
+#include "Constants.h"
 #include <iostream>
 #include <chrono>
 
@@ -16,7 +17,7 @@ void RandomEvents::checkAndApply(Reactor& reactor) {
         std::uniform_int_distribution<int> disasterDist(0, 1);
         int disasterType = disasterDist(rng);
 
-        if (disasterType == 0 && reactor.getCoolant() > 10.0) {
+        if (disasterType == 0 && reactor.getCoolant() > EVENT_MIN_COOLANT_FOR_LEAK) {
             applyCoolantLeak(reactor);
         } else {
             applyPowerSurge(reactor);
@@ -25,11 +26,13 @@ void RandomEvents::checkAndApply(Reactor& reactor) {
 }
 
 void RandomEvents::applyCoolantLeak(Reactor& reactor) {
-    reactor.updateCoolant(-10.0);
-    std::cout << "!!! RANDOM EVENT: Coolant Leak! Lost 10% coolant! !!!\n";
+    reactor.updateCoolant(-EVENT_COOLANT_LEAK_AMOUNT);
+    std::cout << "!!! RANDOM EVENT: Coolant Leak! Lost "
+              << EVENT_COOLANT_LEAK_AMOUNT << "% coolant! !!!\n";
 }
 
 void RandomEvents::applyPowerSurge(Reactor& reactor) {
-    reactor.updateTemperature(50.0);
-    std::cout << "!!! RANDOM EVENT: Power Surge! Temperature increased by 50C! !!!\n";
+    reactor.updateTemperature(EVENT_POWER_SURGE_TEMP);
+    std::cout << "!!! RANDOM EVENT: Power Surge! Temperature increased by "
+              << EVENT_POWER_SURGE_TEMP << "C! !!!\n";
 }
