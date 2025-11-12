@@ -21,7 +21,6 @@ CXXFLAGS = -std=c++11 -Wall -Wextra -O2
 
 # Source files
 SOURCES = main.cpp Reactor_impl.cpp PhysicsEngine.cpp UI.cpp GameController.cpp RandomEvents.cpp
-OBJECTS = $(SOURCES:.cpp=.o)
 
 # Default target
 all: $(EXECUTABLE)
@@ -38,7 +37,7 @@ debug: clean $(EXECUTABLE)
 
 # Clean build artifacts
 clean:
-	$(RM) $(EXECUTABLE) $(OBJECTS) *.dSYM
+	$(RM) $(EXECUTABLE)
 
 # Run the simulator
 run: $(EXECUTABLE)

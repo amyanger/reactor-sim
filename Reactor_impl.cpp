@@ -51,8 +51,12 @@ void Reactor::scram() {
 }
 
 void Reactor::reset() {
+    neutrons = 1000.0;
+    controlRods = 0.5;
     temperature = 300.0;
-    controlRods = 1.0;
+    coolant = 100.0;
+    power = 0.0;
+    fuel = 100.0;
     running = true;
 }
 

@@ -3,10 +3,15 @@
 
 #include "Reactor.h"
 
+struct PhysicsStatus {
+    bool scramTriggered;
+    bool lowCoolantWarning;
+};
+
 class PhysicsEngine {
 public:
-    void updateReactor(Reactor& reactor);
-    
+    PhysicsStatus updateReactor(Reactor& reactor);
+
 private:
     double calculateKeff(double controlRods) const;
     double calculatePower(double neutrons) const;

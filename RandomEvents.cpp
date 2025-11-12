@@ -1,16 +1,21 @@
 #include "RandomEvents.h"
 #include <iostream>
-#include <cstdlib>
-#include <ctime>
+#include <chrono>
 
 RandomEvents::RandomEvents() {
-    std::srand(std::time(nullptr));
+    // Use high-resolution clock for better seed entropy
+    auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    rng.seed(static_cast<unsigned int>(seed));
 }
 
 void RandomEvents::checkAndApply(Reactor& reactor) {
-    int eventRoll = std::rand() % 10;
+    std::uniform_int_distribution<int> eventDist(0, 9);
+    int eventRoll = eventDist(rng);
+
     if (eventRoll == 0) {  // 10% chance
-        int disasterType = std::rand() % 2;
+        std::uniform_int_distribution<int> disasterDist(0, 1);
+        int disasterType = disasterDist(rng);
+
         if (disasterType == 0 && reactor.getCoolant() > 10.0) {
             applyCoolantLeak(reactor);
         } else {
