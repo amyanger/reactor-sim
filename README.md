@@ -85,7 +85,7 @@ Do not use as a reference for real nuclear power plant operation (unless you wan
 👤 Author
 
 Arjun Myanger
-GitHub: https://github.com/arjun-myanger
+GitHub: https://github.com/amyanger
 
 ⸻
 
