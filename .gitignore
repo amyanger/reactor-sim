@@ -16,3 +16,8 @@ reactor_test
 # Build directories
 build/
 cmake-build-*/
+
+# Game save files
+.reactor_highscore*
+.reactor_achievements
+.reactor_save
