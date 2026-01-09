@@ -1,9 +1,11 @@
 #include <iostream>
 #include <iomanip>
-#include <cstdlib>
-#include <ctime>
 #include <string>
 #include <stdexcept>
+#include <random>
+#include <chrono>
+#include <fstream>
+#include <algorithm>
 
 // ANSI Color Codes for terminal output
 namespace Color {
@@ -43,6 +45,12 @@ private:
     static constexpr double POWER_TO_HEAT_RATIO = 0.01;
     static constexpr double NEUTRON_TO_POWER_RATIO = 0.1;
 
+    // Scoring constants
+    static constexpr int POINTS_PER_TURN = 10;
+    static constexpr int POINTS_PER_POWER_UNIT = 1;
+    static constexpr int SCRAM_PENALTY = 500;
+    static constexpr int REFILL_PENALTY = 50;
+
     double neutrons;
     double controlRods;
     double temperature;
@@ -50,6 +58,19 @@ private:
     double power;
     double fuel;
     bool running;
+
+    // Scoring system
+    int score;
+    int turns;
+    int scramCount;
+    int highScore;
+
+    // Modern random number generation
+    std::mt19937 rng;
+    std::uniform_int_distribution<int> eventChance;
+    std::uniform_int_distribution<int> eventType;
+
+    static constexpr const char* HIGH_SCORE_FILE = ".reactor_highscore";
 
 public:
     ReactorSimulator() :
@@ -59,11 +80,37 @@ public:
         coolant(INITIAL_COOLANT),
         power(0.0),
         fuel(INITIAL_FUEL),
-        running(true) {
-        std::srand(std::time(nullptr));
+        running(true),
+        score(0),
+        turns(0),
+        scramCount(0),
+        highScore(0),
+        rng(std::chrono::steady_clock::now().time_since_epoch().count()),
+        eventChance(0, 9),
+        eventType(0, 1) {
+        loadHighScore();
     }
 
 private:
+    void loadHighScore() {
+        std::ifstream file(HIGH_SCORE_FILE);
+        if (file.is_open()) {
+            file >> highScore;
+            file.close();
+        }
+    }
+
+    void saveHighScore() {
+        if (score > highScore) {
+            highScore = score;
+            std::ofstream file(HIGH_SCORE_FILE);
+            if (file.is_open()) {
+                file << highScore;
+                file.close();
+            }
+        }
+    }
+
     std::string getBarColor(double value, double max, bool inverse = false) const {
         double ratio = value / max;
         if (inverse) ratio = 1.0 - ratio;
@@ -75,11 +122,11 @@ private:
 
     void printBar(const std::string& label, double value, double max, int width = 20, bool inverse = false) const {
         int bars = static_cast<int>((value / max) * width);
-        bars = std::max(0, std::min(width, bars)); // Clamp to valid range
+        bars = std::max(0, std::min(width, bars));
 
         std::string color = getBarColor(value, max, inverse);
 
-        std::cout << std::left << std::setw(8) << label << "[";
+        std::cout << std::left << std::setw(10) << label << "[";
         std::cout << color;
         for (int i = 0; i < width; ++i) {
             std::cout << (i < bars ? "█" : " ");
@@ -93,11 +140,25 @@ private:
     }
 
     void displayDashboard() const {
-        std::cout << "\n" << Color::BOLD << Color::CYAN << "=== Reactor Dashboard ===" << Color::RESET << "\n";
+        std::cout << "\n" << Color::BOLD << Color::CYAN << "╔══════════════════════════════════════╗" << Color::RESET << "\n";
+        std::cout << Color::BOLD << Color::CYAN << "║       REACTOR CONTROL DASHBOARD       ║" << Color::RESET << "\n";
+        std::cout << Color::BOLD << Color::CYAN << "╚══════════════════════════════════════╝" << Color::RESET << "\n\n";
         printBar("Temp", temperature, MELTDOWN_TEMPERATURE, 20, false);
         printBar("Coolant", coolant, 100.0, 20, true);
         printBar("Fuel", fuel, 100.0, 20, true);
         std::cout << std::endl;
+    }
+
+    void displayScore() const {
+        std::cout << Color::YELLOW << "╭─────────────────────────────────────╮" << Color::RESET << "\n";
+        std::cout << Color::YELLOW << "│ " << Color::BOLD << "SCORE: " << Color::RESET
+                  << std::setw(8) << score
+                  << Color::YELLOW << " │ " << Color::BOLD << "HIGH: " << Color::RESET
+                  << std::setw(8) << highScore
+                  << Color::YELLOW << " │ " << Color::BOLD << "TURN: " << Color::RESET
+                  << std::setw(4) << turns
+                  << Color::YELLOW << " │" << Color::RESET << "\n";
+        std::cout << Color::YELLOW << "╰─────────────────────────────────────╯" << Color::RESET << "\n";
     }
 
     void displayStatus() const {
@@ -142,11 +203,16 @@ private:
                       << Color::RESET << "\n";
             temperature += 5.0;
         }
+
+        // Update score
+        turns++;
+        score += POINTS_PER_TURN;
+        score += static_cast<int>(power * POINTS_PER_POWER_UNIT);
     }
 
     void processRandomEvents() {
-        if (std::rand() % 10 == 0) {
-            if (std::rand() % 2 == 0 && coolant > 10.0) {
+        if (eventChance(rng) == 0) {
+            if (eventType(rng) == 0 && coolant > 10.0) {
                 coolant = std::max(0.0, coolant - 10.0);
                 std::cout << Color::YELLOW << Color::BOLD
                           << "!!! RANDOM EVENT: Coolant Leak! Lost 10% coolant! !!!"
@@ -169,6 +235,9 @@ private:
             neutrons *= 0.05;
             temperature = std::max(0.0, temperature - 200);
             running = false;
+            scramCount++;
+            score = std::max(0, score - SCRAM_PENALTY);
+            std::cout << Color::RED << "Score penalty: -" << SCRAM_PENALTY << " points" << Color::RESET << "\n";
         }
 
         if (temperature > MELTDOWN_TEMPERATURE) {
@@ -197,21 +266,47 @@ private:
         return false;
     }
 
+    void displayFinalScore() {
+        saveHighScore();
+        std::cout << "\n" << Color::BOLD << Color::CYAN
+                  << "╔══════════════════════════════════════╗\n"
+                  << "║           FINAL RESULTS              ║\n"
+                  << "╠══════════════════════════════════════╣" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║ " << Color::RESET << "Turns Survived: "
+                  << std::setw(21) << turns << Color::CYAN << " ║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║ " << Color::RESET << "SCRAMs Triggered: "
+                  << std::setw(19) << scramCount << Color::CYAN << " ║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║ " << Color::RESET << "Final Score: "
+                  << std::setw(24) << score << Color::CYAN << " ║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║ " << Color::RESET << "High Score: "
+                  << std::setw(25) << highScore << Color::CYAN << " ║" << Color::RESET << "\n";
+        std::cout << Color::BOLD << Color::CYAN
+                  << "╚══════════════════════════════════════╝" << Color::RESET << "\n";
+
+        if (score >= highScore && score > 0) {
+            std::cout << Color::BOLD << Color::GREEN << "🏆 NEW HIGH SCORE! 🏆" << Color::RESET << "\n";
+        }
+    }
+
 public:
     void run() {
         std::cout << Color::BOLD << Color::CYAN
-                  << "Welcome to the C++ Nuclear Reactor Simulator v0.2\n"
+                  << "╔══════════════════════════════════════════════╗\n"
+                  << "║  C++ NUCLEAR REACTOR SIMULATOR v0.3          ║\n"
+                  << "║  Try not to melt the core!                   ║\n"
+                  << "╚══════════════════════════════════════════════╝\n"
                   << Color::RESET;
-        std::cout << Color::DIM << "Try not to melt the core. Type 'q' to quit.\n"
+        std::cout << Color::DIM << "Commands: 0-100 (control rods), 'r' (refill coolant), 'q' (quit)\n"
                   << Color::RESET;
 
         while (running) {
             displayDashboard();
+            displayScore();
             displayStatus();
 
-            std::cout << Color::GREEN << "Set control rod level (0-100%, current "
+            std::cout << Color::GREEN << "\nSet control rod level (0-100%, current "
                       << static_cast<int>(controlRods * 100)
-                      << "%, or 'r' to refill coolant): " << Color::RESET;
+                      << "%): " << Color::RESET;
 
             std::string input;
             if (!std::getline(std::cin, input)) {
@@ -222,7 +317,9 @@ public:
 
             if (input == "r") {
                 coolant = INITIAL_COOLANT;
-                std::cout << Color::GREEN << "Coolant refilled!" << Color::RESET << "\n";
+                score = std::max(0, score - REFILL_PENALTY);
+                std::cout << Color::GREEN << "Coolant refilled! " << Color::RESET
+                          << Color::RED << "(-" << REFILL_PENALTY << " points)" << Color::RESET << "\n";
                 continue;
             }
 
@@ -237,6 +334,7 @@ public:
             }
         }
 
+        displayFinalScore();
         std::cout << "\n" << Color::MAGENTA << Color::BOLD
                   << "Reactor simulation ended. Stay radioactive! ☢️\n"
                   << Color::RESET;
