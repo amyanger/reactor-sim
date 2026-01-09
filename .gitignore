@@ -1,0 +1,18 @@
+# Compiled binaries
+reactor
+reactor_test
+*.o
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Build directories
+build/
+cmake-build-*/
