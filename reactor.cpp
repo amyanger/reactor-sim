@@ -11,6 +11,12 @@
 #include <sstream>
 #include <cmath>
 
+// Sound effects using terminal bell
+namespace Sound {
+    inline void beep() { std::cout << '\a' << std::flush; }
+    inline void alert() { for (int i = 0; i < 3; ++i) { std::cout << '\a' << std::flush; } }
+}
+
 // ANSI Color Codes for terminal output
 namespace Color {
     const std::string RESET = "\033[0m";
@@ -167,6 +173,9 @@ private:
 
     static constexpr const char* HIGH_SCORE_FILE = ".reactor_highscore";
     static constexpr const char* ACHIEVEMENTS_FILE = ".reactor_achievements";
+    static constexpr const char* SAVE_FILE = ".reactor_save";
+
+    bool soundEnabled;
 
     static DifficultySettings getDifficultySettings(Difficulty diff) {
         switch (diff) {
@@ -210,9 +219,61 @@ public:
         eventsExperienced(0),
         turnsWithoutScram(0),
         scramRecoveries(0),
-        rng(std::chrono::steady_clock::now().time_since_epoch().count()) {
+        rng(std::chrono::steady_clock::now().time_since_epoch().count()),
+        soundEnabled(true) {
         loadHighScore();
         loadAchievements();
+    }
+
+    void playSound() {
+        if (soundEnabled) Sound::beep();
+    }
+
+    void playAlert() {
+        if (soundEnabled) Sound::alert();
+    }
+
+    bool saveGame() {
+        std::ofstream file(SAVE_FILE);
+        if (!file.is_open()) return false;
+
+        file << currentDifficulty.name << "\n";
+        file << neutrons << " " << controlRods << " " << temperature << "\n";
+        file << coolant << " " << power << " " << fuel << "\n";
+        file << xenonLevel << " " << xenonHandledCount << "\n";
+        file << turbineRPM << " " << steamPressure << " " << electricityOutput << "\n";
+        file << totalElectricityGenerated << " " << turbineOnline << " " << maxTurbineTurns << "\n";
+        file << eccsAvailable << " " << eccsCooldownTimer << "\n";
+        file << score << " " << turns << " " << scramCount << "\n";
+        file << eventsExperienced << " " << turnsWithoutScram << " " << scramRecoveries << "\n";
+
+        file.close();
+        return true;
+    }
+
+    bool loadGame() {
+        std::ifstream file(SAVE_FILE);
+        if (!file.is_open()) return false;
+
+        std::string diffName;
+        file >> diffName;
+
+        file >> neutrons >> controlRods >> temperature;
+        file >> coolant >> power >> fuel;
+        file >> xenonLevel >> xenonHandledCount;
+        file >> turbineRPM >> steamPressure >> electricityOutput;
+        file >> totalElectricityGenerated >> turbineOnline >> maxTurbineTurns;
+        file >> eccsAvailable >> eccsCooldownTimer;
+        file >> score >> turns >> scramCount;
+        file >> eventsExperienced >> turnsWithoutScram >> scramRecoveries;
+
+        file.close();
+        running = true;
+        return true;
+    }
+
+    void deleteSave() {
+        std::remove(SAVE_FILE);
     }
 
 private:
@@ -317,6 +378,12 @@ private:
                   << std::setw(12) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   a      : View achievements"
                   << std::setw(29) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   s/save : Save game"
+                  << std::setw(37) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   l/load : Load saved game"
+                  << std::setw(31) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   sound  : Toggle sound effects"
+                  << std::setw(25) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   h      : Display this help screen"
                   << std::setw(22) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   q      : Quit the simulation"
@@ -601,6 +668,7 @@ private:
         temperature = std::max(0.0, temperature - NATURAL_COOLING_RATE);
 
         if (coolant < CRITICAL_COOLANT) {
+            playSound();
             std::cout << Color::BG_RED << Color::WHITE << Color::BOLD
                       << "!!! WARNING: Coolant is critically low! !!!"
                       << Color::RESET << "\n";
@@ -699,6 +767,7 @@ private:
 
     void checkSafetyLimits() {
         if ((temperature > currentDifficulty.scramTemperature || neutrons > SCRAM_NEUTRONS) && running) {
+            playAlert();
             std::cout << "\n" << Color::BG_RED << Color::WHITE << Color::BOLD
                       << "*** AUTO SCRAM! Emergency shutdown! ***"
                       << Color::RESET << "\n";
@@ -714,6 +783,7 @@ private:
         }
 
         if (temperature > currentDifficulty.meltdownTemperature) {
+            playAlert();
             std::cout << "\n" << Color::BG_RED << Color::WHITE << Color::BOLD
                       << "!!! MELTDOWN !!! Core has gone critical. Game Over."
                       << Color::RESET << "\n";
@@ -784,11 +854,11 @@ public:
     void run() {
         std::cout << Color::BOLD << Color::CYAN
                   << "╔════════════════════════════════════════════════════════════╗\n"
-                  << "║         C++ NUCLEAR REACTOR SIMULATOR v0.6                 ║\n"
+                  << "║         C++ NUCLEAR REACTOR SIMULATOR v0.7                 ║\n"
                   << "║         Difficulty: " << std::left << std::setw(40) << currentDifficulty.name << "║\n"
                   << "╚════════════════════════════════════════════════════════════╝\n"
                   << Color::RESET;
-        std::cout << Color::DIM << "Commands: 0-100, r(efill), t(urbine), e(ccs), a(chievements), h(elp), q(uit)\n"
+        std::cout << Color::DIM << "Commands: 0-100, r, t, e, s(ave), l(oad), a, h(elp), q(uit)\n"
                   << Color::RESET;
 
         while (running) {
@@ -825,6 +895,32 @@ public:
 
             if (input == "e") {
                 activateECCS();
+                continue;
+            }
+
+            if (input == "save" || input == "s") {
+                if (saveGame()) {
+                    playSound();
+                    std::cout << Color::GREEN << "💾 Game saved successfully!" << Color::RESET << "\n";
+                } else {
+                    std::cout << Color::RED << "Failed to save game." << Color::RESET << "\n";
+                }
+                continue;
+            }
+
+            if (input == "load" || input == "l") {
+                if (loadGame()) {
+                    playSound();
+                    std::cout << Color::GREEN << "💾 Game loaded successfully!" << Color::RESET << "\n";
+                } else {
+                    std::cout << Color::RED << "No save file found." << Color::RESET << "\n";
+                }
+                continue;
+            }
+
+            if (input == "sound") {
+                soundEnabled = !soundEnabled;
+                std::cout << (soundEnabled ? Color::GREEN + "🔊 Sound enabled" : Color::YELLOW + "🔇 Sound disabled") << Color::RESET << "\n";
                 continue;
             }
 
