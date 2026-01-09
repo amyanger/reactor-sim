@@ -164,6 +164,17 @@ private:
     int turnsWithoutScram;
     int scramRecoveries;
 
+    // Statistics tracking
+    double peakTemperature;
+    double peakPower;
+    double peakElectricity;
+    double totalPowerGenerated;
+    double averageTemperature;
+    double temperatureSum;
+    int criticalEvents;
+    double lowestCoolant;
+    double highestXenon;
+
     // Achievements
     std::set<Achievement> unlockedAchievements;
     std::set<Achievement> sessionAchievements;
@@ -219,6 +230,15 @@ public:
         eventsExperienced(0),
         turnsWithoutScram(0),
         scramRecoveries(0),
+        peakTemperature(INITIAL_TEMPERATURE),
+        peakPower(0.0),
+        peakElectricity(0.0),
+        totalPowerGenerated(0.0),
+        averageTemperature(0.0),
+        temperatureSum(0.0),
+        criticalEvents(0),
+        lowestCoolant(INITIAL_COOLANT),
+        highestXenon(0.0),
         rng(std::chrono::steady_clock::now().time_since_epoch().count()),
         soundEnabled(true) {
         loadHighScore();
@@ -378,6 +398,8 @@ private:
                   << std::setw(12) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   a      : View achievements"
                   << std::setw(29) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   stats  : View session statistics"
+                  << std::setw(23) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   s/save : Save game"
                   << std::setw(37) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   l/load : Load saved game"
@@ -630,6 +652,98 @@ private:
         }
     }
 
+    void updateStatistics() {
+        // Track peak values
+        if (temperature > peakTemperature) peakTemperature = temperature;
+        if (power > peakPower) peakPower = power;
+        if (electricityOutput > peakElectricity) peakElectricity = electricityOutput;
+        if (coolant < lowestCoolant) lowestCoolant = coolant;
+        if (xenonLevel > highestXenon) highestXenon = xenonLevel;
+
+        // Track totals
+        totalPowerGenerated += power;
+        temperatureSum += temperature;
+        if (turns > 0) {
+            averageTemperature = temperatureSum / turns;
+        }
+
+        // Count critical events
+        if (temperature > currentDifficulty.scramTemperature * 0.9 ||
+            coolant < CRITICAL_COOLANT * 1.5 ||
+            xenonLevel > MAX_XENON * 0.8) {
+            criticalEvents++;
+        }
+    }
+
+    void displayStatistics() const {
+        std::cout << "\n" << Color::BOLD << Color::BLUE
+                  << "╔═══════════════════════════════════════════════════════════╗\n"
+                  << "║                  SESSION STATISTICS                       ║\n"
+                  << "╠═══════════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+
+        std::cout << Color::BLUE << "║ " << Color::RESET << Color::BOLD << "TEMPERATURE:" << Color::RESET
+                  << std::setw(47) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Peak Temperature: "
+                  << std::fixed << std::setprecision(1) << std::setw(10) << peakTemperature << "°C"
+                  << std::setw(27) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Average Temperature: "
+                  << std::fixed << std::setprecision(1) << std::setw(7) << averageTemperature << "°C"
+                  << std::setw(27) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+
+        std::cout << Color::BLUE << "║ " << Color::RESET << Color::BOLD << "POWER GENERATION:" << Color::RESET
+                  << std::setw(42) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Peak Power: "
+                  << std::fixed << std::setprecision(1) << std::setw(16) << peakPower << " units"
+                  << std::setw(23) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Peak Electricity: "
+                  << std::fixed << std::setprecision(1) << std::setw(10) << peakElectricity << " MW"
+                  << std::setw(25) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Total Power Generated: "
+                  << std::fixed << std::setprecision(0) << std::setw(5) << totalPowerGenerated << " units"
+                  << std::setw(22) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+
+        std::cout << Color::BLUE << "║ " << Color::RESET << Color::BOLD << "SAFETY METRICS:" << Color::RESET
+                  << std::setw(44) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Lowest Coolant: "
+                  << std::fixed << std::setprecision(1) << std::setw(12) << lowestCoolant << "%"
+                  << std::setw(26) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Highest Xenon: "
+                  << std::fixed << std::setprecision(1) << std::setw(13) << highestXenon << "%"
+                  << std::setw(26) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << "  Critical Events: "
+                  << std::setw(11) << criticalEvents
+                  << std::setw(28) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+
+        // Calculate efficiency rating
+        double efficiency = 0.0;
+        if (turns > 0) {
+            double tempEfficiency = 1.0 - (averageTemperature / currentDifficulty.meltdownTemperature);
+            double safetyRating = 1.0 - (static_cast<double>(scramCount) / std::max(1, turns));
+            double powerRating = totalElectricityGenerated / std::max(1, turns);
+            efficiency = (tempEfficiency * 0.3 + safetyRating * 0.4 + std::min(1.0, powerRating / 100.0) * 0.3) * 100.0;
+        }
+
+        std::string efficiencyRating;
+        std::string efficiencyColor;
+        if (efficiency >= 80) { efficiencyRating = "EXCELLENT"; efficiencyColor = Color::GREEN; }
+        else if (efficiency >= 60) { efficiencyRating = "GOOD"; efficiencyColor = Color::GREEN; }
+        else if (efficiency >= 40) { efficiencyRating = "AVERAGE"; efficiencyColor = Color::YELLOW; }
+        else if (efficiency >= 20) { efficiencyRating = "POOR"; efficiencyColor = Color::RED; }
+        else { efficiencyRating = "CRITICAL"; efficiencyColor = Color::RED; }
+
+        std::cout << Color::BLUE << "╠═══════════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+        std::cout << Color::BLUE << "║ " << Color::RESET << Color::BOLD << "OPERATOR EFFICIENCY: " << Color::RESET
+                  << efficiencyColor << std::fixed << std::setprecision(1) << efficiency << "% - " << efficiencyRating
+                  << Color::RESET << std::setw(25 - static_cast<int>(efficiencyRating.length())) << "" << Color::BLUE << "║" << Color::RESET << "\n";
+
+        std::cout << Color::BOLD << Color::BLUE
+                  << "╚═══════════════════════════════════════════════════════════╝" << Color::RESET << "\n\n";
+
+        std::cout << Color::DIM << "Press Enter to continue..." << Color::RESET;
+        std::string dummy;
+        std::getline(std::cin, dummy);
+    }
+
     void activateECCS() {
         if (!eccsAvailable) {
             std::cout << Color::RED << "✗ ECCS on cooldown! " << eccsCooldownTimer << " turns remaining." << Color::RESET << "\n";
@@ -679,6 +793,9 @@ private:
         updateXenon();
         updateTurbine();
         updateECCS();
+
+        // Update statistics
+        updateStatistics();
 
         // Update score with difficulty multiplier
         turns++;
@@ -854,11 +971,11 @@ public:
     void run() {
         std::cout << Color::BOLD << Color::CYAN
                   << "╔════════════════════════════════════════════════════════════╗\n"
-                  << "║         C++ NUCLEAR REACTOR SIMULATOR v0.7                 ║\n"
+                  << "║         C++ NUCLEAR REACTOR SIMULATOR v0.8                 ║\n"
                   << "║         Difficulty: " << std::left << std::setw(40) << currentDifficulty.name << "║\n"
                   << "╚════════════════════════════════════════════════════════════╝\n"
                   << Color::RESET;
-        std::cout << Color::DIM << "Commands: 0-100, r, t, e, s(ave), l(oad), a, h(elp), q(uit)\n"
+        std::cout << Color::DIM << "Commands: 0-100, r, t, e, s(ave), l(oad), a, stats, h(elp), q(uit)\n"
                   << Color::RESET;
 
         while (running) {
@@ -878,6 +995,7 @@ public:
             if (input == "q") break;
             if (input == "h" || input == "help") { displayHelp(); continue; }
             if (input == "a") { displayAchievements(); continue; }
+            if (input == "stats") { displayStatistics(); continue; }
 
             if (input == "r") {
                 coolant = INITIAL_COOLANT;
