@@ -26,6 +26,23 @@ namespace Color {
     const std::string BG_YELLOW = "\033[43m";
 }
 
+enum class Difficulty {
+    EASY,
+    NORMAL,
+    HARD,
+    NIGHTMARE
+};
+
+struct DifficultySettings {
+    std::string name;
+    double fuelDepletionRate;
+    double coolantLossRate;
+    double eventChance;         // 1 in X chance per turn
+    double scramTemperature;
+    double meltdownTemperature;
+    int scoreMultiplier;
+};
+
 class ReactorSimulator {
 private:
     static constexpr double INITIAL_NEUTRONS = 1000.0;
@@ -34,13 +51,9 @@ private:
     static constexpr double INITIAL_FUEL = 100.0;
     static constexpr double INITIAL_CONTROL_RODS = 0.5;
 
-    static constexpr double SCRAM_TEMPERATURE = 1000.0;
     static constexpr double SCRAM_NEUTRONS = 2000.0;
-    static constexpr double MELTDOWN_TEMPERATURE = 2000.0;
     static constexpr double CRITICAL_COOLANT = 20.0;
 
-    static constexpr double FUEL_DEPLETION_RATE = 0.1;
-    static constexpr double COOLANT_LOSS_RATE = 0.3;
     static constexpr double NATURAL_COOLING_RATE = 0.5;
     static constexpr double POWER_TO_HEAT_RATIO = 0.01;
     static constexpr double NEUTRON_TO_POWER_RATIO = 0.1;
@@ -50,6 +63,9 @@ private:
     static constexpr int POINTS_PER_POWER_UNIT = 1;
     static constexpr int SCRAM_PENALTY = 500;
     static constexpr int REFILL_PENALTY = 50;
+
+    // Difficulty settings
+    DifficultySettings currentDifficulty;
 
     double neutrons;
     double controlRods;
@@ -67,13 +83,27 @@ private:
 
     // Modern random number generation
     std::mt19937 rng;
-    std::uniform_int_distribution<int> eventChance;
-    std::uniform_int_distribution<int> eventType;
 
     static constexpr const char* HIGH_SCORE_FILE = ".reactor_highscore";
 
+    static DifficultySettings getDifficultySettings(Difficulty diff) {
+        switch (diff) {
+            case Difficulty::EASY:
+                return {"Easy", 0.05, 0.15, 15.0, 1200.0, 2500.0, 1};
+            case Difficulty::NORMAL:
+                return {"Normal", 0.1, 0.3, 10.0, 1000.0, 2000.0, 2};
+            case Difficulty::HARD:
+                return {"Hard", 0.15, 0.5, 7.0, 800.0, 1500.0, 3};
+            case Difficulty::NIGHTMARE:
+                return {"Nightmare", 0.2, 0.7, 5.0, 600.0, 1200.0, 5};
+            default:
+                return {"Normal", 0.1, 0.3, 10.0, 1000.0, 2000.0, 2};
+        }
+    }
+
 public:
-    ReactorSimulator() :
+    ReactorSimulator(Difficulty diff = Difficulty::NORMAL) :
+        currentDifficulty(getDifficultySettings(diff)),
         neutrons(INITIAL_NEUTRONS),
         controlRods(INITIAL_CONTROL_RODS),
         temperature(INITIAL_TEMPERATURE),
@@ -85,15 +115,14 @@ public:
         turns(0),
         scramCount(0),
         highScore(0),
-        rng(std::chrono::steady_clock::now().time_since_epoch().count()),
-        eventChance(0, 9),
-        eventType(0, 1) {
+        rng(std::chrono::steady_clock::now().time_since_epoch().count()) {
         loadHighScore();
     }
 
 private:
     void loadHighScore() {
-        std::ifstream file(HIGH_SCORE_FILE);
+        std::string filename = std::string(HIGH_SCORE_FILE) + "_" + currentDifficulty.name;
+        std::ifstream file(filename);
         if (file.is_open()) {
             file >> highScore;
             file.close();
@@ -103,12 +132,75 @@ private:
     void saveHighScore() {
         if (score > highScore) {
             highScore = score;
-            std::ofstream file(HIGH_SCORE_FILE);
+            std::string filename = std::string(HIGH_SCORE_FILE) + "_" + currentDifficulty.name;
+            std::ofstream file(filename);
             if (file.is_open()) {
                 file << highScore;
                 file.close();
             }
         }
+    }
+
+    void displayHelp() const {
+        std::cout << "\n" << Color::BOLD << Color::CYAN
+                  << "╔═══════════════════════════════════════════════════════════╗\n"
+                  << "║                    OPERATOR'S MANUAL                      ║\n"
+                  << "╠═══════════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+
+        std::cout << Color::CYAN << "║" << Color::RESET << Color::BOLD << " COMMANDS:" << Color::RESET
+                  << std::setw(50) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   0-100  : Set control rod insertion percentage"
+                  << std::setw(10) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   r      : Refill coolant (costs " << REFILL_PENALTY << " points)"
+                  << std::setw(17) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   h      : Display this help screen"
+                  << std::setw(22) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   q      : Quit the simulation"
+                  << std::setw(27) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+
+        std::cout << Color::CYAN << "╠═══════════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+
+        std::cout << Color::CYAN << "║" << Color::RESET << Color::BOLD << " REACTOR PHYSICS:" << Color::RESET
+                  << std::setw(42) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • Control rods absorb neutrons and slow reactions"
+                  << std::setw(6) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • Higher rod % = safer but less power/points"
+                  << std::setw(10) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • Lower rod % = more power but risk of SCRAM"
+                  << std::setw(10) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • Coolant prevents overheating - keep it above 20%"
+                  << std::setw(5) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • Fuel depletes over time, reducing efficiency"
+                  << std::setw(9) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+
+        std::cout << Color::CYAN << "╠═══════════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+
+        std::cout << Color::CYAN << "║" << Color::RESET << Color::BOLD << " SAFETY LIMITS (" << currentDifficulty.name << " mode):" << Color::RESET
+                  << std::setw(34 - static_cast<int>(currentDifficulty.name.length())) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • SCRAM triggers at: " << currentDifficulty.scramTemperature << "°C or "
+                  << SCRAM_NEUTRONS << " neutrons" << std::setw(7) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • MELTDOWN at: " << currentDifficulty.meltdownTemperature << "°C"
+                  << std::setw(31) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • SCRAM penalty: -" << SCRAM_PENALTY << " points"
+                  << std::setw(28) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+
+        std::cout << Color::CYAN << "╠═══════════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+
+        std::cout << Color::CYAN << "║" << Color::RESET << Color::BOLD << " SCORING:" << Color::RESET
+                  << std::setw(50) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • +" << POINTS_PER_TURN << " points per turn survived"
+                  << std::setw(30) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • +" << POINTS_PER_POWER_UNIT << " point per unit of power generated"
+                  << std::setw(21) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   • Score multiplier: x" << currentDifficulty.scoreMultiplier
+                  << std::setw(34) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+
+        std::cout << Color::BOLD << Color::CYAN
+                  << "╚═══════════════════════════════════════════════════════════╝" << Color::RESET << "\n\n";
+
+        std::cout << Color::DIM << "Press Enter to continue..." << Color::RESET;
+        std::string dummy;
+        std::getline(std::cin, dummy);
     }
 
     std::string getBarColor(double value, double max, bool inverse = false) const {
@@ -141,9 +233,10 @@ private:
 
     void displayDashboard() const {
         std::cout << "\n" << Color::BOLD << Color::CYAN << "╔══════════════════════════════════════╗" << Color::RESET << "\n";
-        std::cout << Color::BOLD << Color::CYAN << "║       REACTOR CONTROL DASHBOARD       ║" << Color::RESET << "\n";
+        std::cout << Color::BOLD << Color::CYAN << "║   REACTOR DASHBOARD [" << currentDifficulty.name << "]"
+                  << std::setw(16 - static_cast<int>(currentDifficulty.name.length())) << "" << "║" << Color::RESET << "\n";
         std::cout << Color::BOLD << Color::CYAN << "╚══════════════════════════════════════╝" << Color::RESET << "\n\n";
-        printBar("Temp", temperature, MELTDOWN_TEMPERATURE, 20, false);
+        printBar("Temp", temperature, currentDifficulty.meltdownTemperature, 20, false);
         printBar("Coolant", coolant, 100.0, 20, true);
         printBar("Fuel", fuel, 100.0, 20, true);
         std::cout << std::endl;
@@ -191,10 +284,10 @@ private:
 
         double fuel_eff = fuel / 100.0;
         neutrons *= fuel_eff;
-        fuel = std::max(0.0, fuel - FUEL_DEPLETION_RATE);
+        fuel = std::max(0.0, fuel - currentDifficulty.fuelDepletionRate);
 
         temperature += power * POWER_TO_HEAT_RATIO;
-        coolant = std::max(0.0, coolant - COOLANT_LOSS_RATE);
+        coolant = std::max(0.0, coolant - currentDifficulty.coolantLossRate);
         temperature = std::max(0.0, temperature - NATURAL_COOLING_RATE);
 
         if (coolant < CRITICAL_COOLANT) {
@@ -204,15 +297,18 @@ private:
             temperature += 5.0;
         }
 
-        // Update score
+        // Update score with difficulty multiplier
         turns++;
-        score += POINTS_PER_TURN;
-        score += static_cast<int>(power * POINTS_PER_POWER_UNIT);
+        score += POINTS_PER_TURN * currentDifficulty.scoreMultiplier;
+        score += static_cast<int>(power * POINTS_PER_POWER_UNIT * currentDifficulty.scoreMultiplier);
     }
 
     void processRandomEvents() {
-        if (eventChance(rng) == 0) {
-            if (eventType(rng) == 0 && coolant > 10.0) {
+        std::uniform_int_distribution<int> eventDist(0, static_cast<int>(currentDifficulty.eventChance) - 1);
+        std::uniform_int_distribution<int> typeDist(0, 1);
+
+        if (eventDist(rng) == 0) {
+            if (typeDist(rng) == 0 && coolant > 10.0) {
                 coolant = std::max(0.0, coolant - 10.0);
                 std::cout << Color::YELLOW << Color::BOLD
                           << "!!! RANDOM EVENT: Coolant Leak! Lost 10% coolant! !!!"
@@ -227,7 +323,7 @@ private:
     }
 
     void checkSafetyLimits() {
-        if ((temperature > SCRAM_TEMPERATURE || neutrons > SCRAM_NEUTRONS) && running) {
+        if ((temperature > currentDifficulty.scramTemperature || neutrons > SCRAM_NEUTRONS) && running) {
             std::cout << "\n" << Color::BG_RED << Color::WHITE << Color::BOLD
                       << "*** AUTO SCRAM! Emergency shutdown! ***"
                       << Color::RESET << "\n";
@@ -240,7 +336,7 @@ private:
             std::cout << Color::RED << "Score penalty: -" << SCRAM_PENALTY << " points" << Color::RESET << "\n";
         }
 
-        if (temperature > MELTDOWN_TEMPERATURE) {
+        if (temperature > currentDifficulty.meltdownTemperature) {
             std::cout << "\n" << Color::BG_RED << Color::WHITE << Color::BOLD
                       << "!!! MELTDOWN !!! Core has gone critical. You have failed as reactor operator."
                       << Color::RESET << "\n";
@@ -272,14 +368,16 @@ private:
                   << "╔══════════════════════════════════════╗\n"
                   << "║           FINAL RESULTS              ║\n"
                   << "╠══════════════════════════════════════╣" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║ " << Color::RESET << "Difficulty: "
+                  << std::setw(25) << currentDifficulty.name << Color::CYAN << " ║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║ " << Color::RESET << "Turns Survived: "
                   << std::setw(21) << turns << Color::CYAN << " ║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║ " << Color::RESET << "SCRAMs Triggered: "
                   << std::setw(19) << scramCount << Color::CYAN << " ║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║ " << Color::RESET << "Final Score: "
                   << std::setw(24) << score << Color::CYAN << " ║" << Color::RESET << "\n";
-        std::cout << Color::CYAN << "║ " << Color::RESET << "High Score: "
-                  << std::setw(25) << highScore << Color::CYAN << " ║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║ " << Color::RESET << "High Score (" << currentDifficulty.name << "): "
+                  << std::setw(20 - static_cast<int>(currentDifficulty.name.length())) << highScore << Color::CYAN << " ║" << Color::RESET << "\n";
         std::cout << Color::BOLD << Color::CYAN
                   << "╚══════════════════════════════════════╝" << Color::RESET << "\n";
 
@@ -292,11 +390,11 @@ public:
     void run() {
         std::cout << Color::BOLD << Color::CYAN
                   << "╔══════════════════════════════════════════════╗\n"
-                  << "║  C++ NUCLEAR REACTOR SIMULATOR v0.3          ║\n"
-                  << "║  Try not to melt the core!                   ║\n"
+                  << "║  C++ NUCLEAR REACTOR SIMULATOR v0.4          ║\n"
+                  << "║  Difficulty: " << std::left << std::setw(32) << currentDifficulty.name << "║\n"
                   << "╚══════════════════════════════════════════════╝\n"
                   << Color::RESET;
-        std::cout << Color::DIM << "Commands: 0-100 (control rods), 'r' (refill coolant), 'q' (quit)\n"
+        std::cout << Color::DIM << "Commands: 0-100, 'r' (refill), 'h' (help), 'q' (quit)\n"
                   << Color::RESET;
 
         while (running) {
@@ -314,6 +412,11 @@ public:
             }
 
             if (input == "q") break;
+
+            if (input == "h" || input == "help") {
+                displayHelp();
+                continue;
+            }
 
             if (input == "r") {
                 coolant = INITIAL_COOLANT;
@@ -341,8 +444,45 @@ public:
     }
 };
 
+Difficulty selectDifficulty() {
+    std::cout << Color::BOLD << Color::CYAN
+              << "\n╔══════════════════════════════════════╗\n"
+              << "║        SELECT DIFFICULTY             ║\n"
+              << "╠══════════════════════════════════════╣\n" << Color::RESET;
+    std::cout << Color::CYAN << "║ " << Color::GREEN << "1. Easy     " << Color::RESET
+              << "- Forgiving parameters      " << Color::CYAN << "║" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "║ " << Color::YELLOW << "2. Normal   " << Color::RESET
+              << "- Standard experience       " << Color::CYAN << "║" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "║ " << Color::RED << "3. Hard     " << Color::RESET
+              << "- For experienced operators " << Color::CYAN << "║" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "║ " << Color::MAGENTA << "4. Nightmare" << Color::RESET
+              << "- Only the brave survive    " << Color::CYAN << "║" << Color::RESET << "\n";
+    std::cout << Color::BOLD << Color::CYAN
+              << "╚══════════════════════════════════════╝\n" << Color::RESET;
+    std::cout << Color::DIM << "Enter choice (1-4): " << Color::RESET;
+
+    std::string input;
+    if (!std::getline(std::cin, input)) {
+        return Difficulty::NORMAL;
+    }
+
+    try {
+        int choice = std::stoi(input);
+        switch (choice) {
+            case 1: return Difficulty::EASY;
+            case 2: return Difficulty::NORMAL;
+            case 3: return Difficulty::HARD;
+            case 4: return Difficulty::NIGHTMARE;
+            default: return Difficulty::NORMAL;
+        }
+    } catch (const std::exception&) {
+        return Difficulty::NORMAL;
+    }
+}
+
 int main() {
-    ReactorSimulator simulator;
+    Difficulty diff = selectDifficulty();
+    ReactorSimulator simulator(diff);
     simulator.run();
     return 0;
 }
