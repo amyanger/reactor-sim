@@ -175,6 +175,15 @@ private:
     double lowestCoolant;
     double highestXenon;
 
+    // Operator event log
+    struct LogEntry {
+        int turn;
+        std::string type;  // ACTION, EVENT, WARNING, CRITICAL
+        std::string message;
+    };
+    std::vector<LogEntry> operatorLog;
+    static constexpr int MAX_LOG_ENTRIES = 100;
+
     // Achievements
     std::set<Achievement> unlockedAchievements;
     std::set<Achievement> sessionAchievements;
@@ -399,6 +408,8 @@ private:
         std::cout << Color::CYAN << "║" << Color::RESET << "   a      : View achievements"
                   << std::setw(29) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   stats  : View session statistics"
+                  << std::setw(23) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   log    : View operator event log"
                   << std::setw(23) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   s/save : Save game"
                   << std::setw(37) << "" << Color::CYAN << "║" << Color::RESET << "\n";
@@ -675,6 +686,55 @@ private:
         }
     }
 
+    void addLogEntry(const std::string& type, const std::string& message) {
+        LogEntry entry{turns, type, message};
+        operatorLog.push_back(entry);
+        if (operatorLog.size() > MAX_LOG_ENTRIES) {
+            operatorLog.erase(operatorLog.begin());
+        }
+    }
+
+    void displayLog() const {
+        std::cout << "\n" << Color::BOLD << Color::WHITE
+                  << "╔═══════════════════════════════════════════════════════════╗\n"
+                  << "║                    OPERATOR LOG                           ║\n"
+                  << "╠═══════════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+
+        if (operatorLog.empty()) {
+            std::cout << Color::WHITE << "║ " << Color::DIM << "No log entries yet."
+                      << std::setw(40) << "" << Color::WHITE << "║" << Color::RESET << "\n";
+        } else {
+            // Show last 15 entries
+            int start = std::max(0, static_cast<int>(operatorLog.size()) - 15);
+            for (size_t i = start; i < operatorLog.size(); ++i) {
+                const auto& entry = operatorLog[i];
+                std::string color;
+                std::string prefix;
+                if (entry.type == "CRITICAL") { color = Color::RED; prefix = "!!"; }
+                else if (entry.type == "WARNING") { color = Color::YELLOW; prefix = "!!"; }
+                else if (entry.type == "EVENT") { color = Color::CYAN; prefix = ">>"; }
+                else { color = Color::GREEN; prefix = ">>"; }
+
+                std::cout << Color::WHITE << "║ " << Color::DIM << "[T" << std::setw(3) << entry.turn << "] "
+                          << Color::RESET << color << prefix << " " << entry.message << Color::RESET;
+
+                int padding = 48 - static_cast<int>(entry.message.length());
+                if (padding > 0) std::cout << std::setw(padding) << "";
+                std::cout << Color::WHITE << "║" << Color::RESET << "\n";
+            }
+        }
+
+        std::cout << Color::BOLD << Color::WHITE
+                  << "╠═══════════════════════════════════════════════════════════╣\n"
+                  << "║ Total Entries: " << std::setw(4) << operatorLog.size()
+                  << std::setw(38) << "" << "║\n"
+                  << "╚═══════════════════════════════════════════════════════════╝" << Color::RESET << "\n\n";
+
+        std::cout << Color::DIM << "Press Enter to continue..." << Color::RESET;
+        std::string dummy;
+        std::getline(std::cin, dummy);
+    }
+
     void displayStatistics() const {
         std::cout << "\n" << Color::BOLD << Color::BLUE
                   << "╔═══════════════════════════════════════════════════════════╗\n"
@@ -761,6 +821,7 @@ private:
                   << " 🚨 ECCS ACTIVATED! +" << ECCS_COOLANT_BOOST << "% coolant, -" << ECCS_TEMP_REDUCTION << "°C "
                   << Color::RESET << "\n";
         std::cout << Color::RED << "(-" << ECCS_PENALTY << " points)" << Color::RESET << "\n";
+        addLogEntry("CRITICAL", "ECCS activated - emergency cooling");
     }
 
     void updatePhysics() {
@@ -824,34 +885,40 @@ private:
             std::cout << Color::YELLOW << Color::BOLD
                       << "⚠ COOLANT LEAK: Lost " << std::fixed << std::setprecision(1) << leak << "% coolant!"
                       << Color::RESET << "\n";
+            addLogEntry("WARNING", "Coolant leak detected - " + std::to_string(static_cast<int>(leak)) + "% lost");
         } else if (roll < 32) {
             double surge = 30.0 + (rng() % 40);
             temperature += surge;
             std::cout << Color::RED << Color::BOLD
                       << "⚡ POWER SURGE: Temperature +" << std::fixed << std::setprecision(1) << surge << "°C!"
                       << Color::RESET << "\n";
+            addLogEntry("WARNING", "Power surge - temperature spike");
         } else if (roll < 42) {
             coolant = std::max(0.0, coolant - 15.0);
             temperature += 20.0;
             std::cout << Color::RED << Color::BOLD
                       << "🔧 PUMP FAILURE: -15% coolant, +20°C!"
                       << Color::RESET << "\n";
+            addLogEntry("WARNING", "Coolant pump failure");
         } else if (roll < 52) {
             xenonLevel = std::min(MAX_XENON, xenonLevel + 20.0);
             std::cout << Color::MAGENTA << Color::BOLD
                       << "☢ XENON SPIKE: Xe-135 levels surged! +20%"
                       << Color::RESET << "\n";
+            addLogEntry("EVENT", "Xenon-135 spike detected");
         } else if (roll < 62) {
             if (turbineOnline) {
                 turbineRPM = std::max(0.0, turbineRPM - 500.0);
                 std::cout << Color::YELLOW << Color::BOLD
                           << "💨 STEAM LEAK: Turbine -500 RPM"
                           << Color::RESET << "\n";
+                addLogEntry("WARNING", "Steam leak in turbine hall");
             } else {
                 temperature += 15.0;
                 std::cout << Color::YELLOW << Color::BOLD
                           << "💨 STEAM LEAK: +15°C"
                           << Color::RESET << "\n";
+                addLogEntry("WARNING", "Steam leak in reactor building");
             }
         } else if (roll < 70) {
             if (turbineOnline) {
@@ -860,6 +927,7 @@ private:
                 std::cout << Color::RED << Color::BOLD
                           << "⚙ TURBINE TRIP: Emergency shutdown!"
                           << Color::RESET << "\n";
+                addLogEntry("WARNING", "Turbine trip - emergency shutdown");
             }
         } else if (roll < 80) {
             double bonus = 50.0 + (rng() % 50);
@@ -867,18 +935,21 @@ private:
             std::cout << Color::GREEN << Color::BOLD
                       << "✨ EFFICIENCY BOOST: +" << static_cast<int>(bonus) << " points!"
                       << Color::RESET << "\n";
+            addLogEntry("EVENT", "Efficiency improvement bonus");
         } else if (roll < 90) {
             double bonus = 10.0 + (rng() % 15);
             coolant = std::min(100.0, coolant + bonus);
             std::cout << Color::GREEN << Color::BOLD
                       << "💧 COOLANT DELIVERY: +" << std::fixed << std::setprecision(1) << bonus << "% coolant!"
                       << Color::RESET << "\n";
+            addLogEntry("EVENT", "Coolant delivery received");
         } else {
             temperature = std::max(INITIAL_TEMPERATURE, temperature - 30.0);
             xenonLevel = std::max(0.0, xenonLevel - 10.0);
             std::cout << Color::GREEN << Color::BOLD
                       << "👷 MAINTENANCE CREW: -30°C, -10% xenon"
                       << Color::RESET << "\n";
+            addLogEntry("EVENT", "Maintenance crew performed repairs");
         }
     }
 
@@ -897,6 +968,8 @@ private:
             turnsWithoutScram = 0;
             score = std::max(0, score - SCRAM_PENALTY);
             std::cout << Color::RED << "Score penalty: -" << SCRAM_PENALTY << " points" << Color::RESET << "\n";
+            std::string reason = temperature > currentDifficulty.scramTemperature ? "temperature exceeded limit" : "neutron flux exceeded limit";
+            addLogEntry("CRITICAL", "AUTO SCRAM triggered - " + reason);
         }
 
         if (temperature > currentDifficulty.meltdownTemperature) {
@@ -904,6 +977,7 @@ private:
             std::cout << "\n" << Color::BG_RED << Color::WHITE << Color::BOLD
                       << "!!! MELTDOWN !!! Core has gone critical. Game Over."
                       << Color::RESET << "\n";
+            addLogEntry("CRITICAL", "MELTDOWN - Core destruction");
             running = false;
         }
     }
@@ -996,18 +1070,21 @@ public:
             if (input == "h" || input == "help") { displayHelp(); continue; }
             if (input == "a") { displayAchievements(); continue; }
             if (input == "stats") { displayStatistics(); continue; }
+            if (input == "log") { displayLog(); continue; }
 
             if (input == "r") {
                 coolant = INITIAL_COOLANT;
                 score = std::max(0, score - REFILL_PENALTY);
                 std::cout << Color::GREEN << "Coolant refilled! " << Color::RESET
                           << Color::RED << "(-" << REFILL_PENALTY << " pts)" << Color::RESET << "\n";
+                addLogEntry("ACTION", "Coolant system refilled to 100%");
                 continue;
             }
 
             if (input == "t") {
                 turbineOnline = !turbineOnline;
                 std::cout << (turbineOnline ? Color::GREEN + "Turbine starting..." : Color::YELLOW + "Turbine stopping...") << Color::RESET << "\n";
+                addLogEntry("ACTION", turbineOnline ? "Turbine brought online" : "Turbine taken offline");
                 continue;
             }
 
