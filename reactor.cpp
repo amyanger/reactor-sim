@@ -162,6 +162,11 @@ private:
     static constexpr double DANGER_RADIATION = 500.0;        // Evacuation level
     static constexpr double LETHAL_RADIATION = 2000.0;       // Fatal dose
 
+    // Containment constants
+    static constexpr double MAX_CONTAINMENT = 100.0;
+    static constexpr double CONTAINMENT_WARNING = 70.0;
+    static constexpr double CONTAINMENT_CRITICAL = 40.0;
+
     // Xenon poisoning
     static constexpr double MAX_XENON = 100.0;
     static constexpr double XENON_DECAY_RATE = 2.0;
@@ -234,6 +239,10 @@ private:
     int stormsSurvived;
     int turnsWithoutPressureRelief;
     int safeRadiationTurns;
+
+    // Containment system
+    double containmentIntegrity;
+    bool containmentBreach;
 
     static WeatherInfo getWeatherInfo(Weather w) {
         switch (w) {
@@ -347,6 +356,8 @@ public:
         stormsSurvived(0),
         turnsWithoutPressureRelief(0),
         safeRadiationTurns(0),
+        containmentIntegrity(MAX_CONTAINMENT),
+        containmentBreach(false),
         score(0),
         turns(0),
         scramCount(0),
@@ -697,7 +708,10 @@ private:
         // Core section
         std::cout << Color::CYAN << "║ " << Color::BOLD << "REACTOR CORE" << Color::RESET;
         std::string eccsStatus = eccsAvailable ? (Color::GREEN + "ECCS READY" + Color::RESET) : (Color::RED + "ECCS CD:" + std::to_string(eccsCooldownTimer) + Color::RESET);
-        std::cout << std::setw(26) << "" << eccsStatus << Color::CYAN << "  ║" << Color::RESET << "\n";
+        std::string containmentStatus = containmentBreach ? (Color::RED + "BREACH!" + Color::RESET) :
+                                       (containmentIntegrity < CONTAINMENT_WARNING ? (Color::YELLOW + "STRESSED" + Color::RESET) :
+                                       (Color::GREEN + "INTACT" + Color::RESET));
+        std::cout << std::setw(10) << "" << eccsStatus << " " << containmentStatus << Color::CYAN << "  ║" << Color::RESET << "\n";
 
         std::cout << Color::CYAN << "║ " << Color::RESET;
         printBar("Temp", temperature, currentDifficulty.meltdownTemperature, 16, false);
@@ -1124,6 +1138,58 @@ private:
         }
     }
 
+    void updateContainment() {
+        // Containment degrades under stress
+        double stressFactor = 0.0;
+
+        // High temperature stresses containment
+        if (temperature > currentDifficulty.scramTemperature * 0.7) {
+            stressFactor += (temperature - currentDifficulty.scramTemperature * 0.7) / 500.0;
+        }
+
+        // High steam pressure stresses containment
+        if (steamPressure > MAX_STEAM_PRESSURE * 0.8) {
+            stressFactor += (steamPressure - MAX_STEAM_PRESSURE * 0.8) / 100.0;
+        }
+
+        // High radiation indicates containment stress
+        if (radiationLevel > WARNING_RADIATION) {
+            stressFactor += (radiationLevel - WARNING_RADIATION) / 1000.0;
+        }
+
+        // Apply degradation
+        if (stressFactor > 0) {
+            containmentIntegrity = std::max(0.0, containmentIntegrity - stressFactor * 0.1);
+        } else {
+            // Slow natural recovery when not under stress
+            containmentIntegrity = std::min(MAX_CONTAINMENT, containmentIntegrity + 0.05);
+        }
+
+        // Containment warnings
+        if (containmentIntegrity < CONTAINMENT_CRITICAL && !containmentBreach) {
+            containmentBreach = true;
+            std::cout << Color::BG_RED << Color::WHITE << Color::BOLD
+                      << " ⚠ CONTAINMENT BREACH! Structural integrity critical! "
+                      << Color::RESET << "\n";
+            addLogEntry("CRITICAL", "Containment breach detected");
+            playAlert();
+
+            // Breach increases radiation significantly
+            radiationLevel *= 2.0;
+        } else if (containmentIntegrity < CONTAINMENT_WARNING) {
+            std::cout << Color::RED << "⚠ CONTAINMENT WARNING: Integrity at "
+                      << std::fixed << std::setprecision(1) << containmentIntegrity << "%"
+                      << Color::RESET << "\n";
+        }
+
+        // Recovery from breach
+        if (containmentBreach && containmentIntegrity > CONTAINMENT_WARNING) {
+            containmentBreach = false;
+            std::cout << Color::GREEN << "✓ Containment integrity restored!" << Color::RESET << "\n";
+            addLogEntry("EVENT", "Containment integrity restored");
+        }
+    }
+
     void displayContextualTip() {
         if (!tipsEnabled || turns - lastTipTurn < 5) return;
 
@@ -1372,6 +1438,7 @@ private:
         updateECCS();
         updateDieselGenerator();
         updateRadiation();
+        updateContainment();
         updateWeather();
         updateGridDemand();
 
@@ -1565,7 +1632,7 @@ public:
     void run() {
         std::cout << Color::BOLD << Color::CYAN
                   << "╔════════════════════════════════════════════════════════════╗\n"
-                  << "║         C++ NUCLEAR REACTOR SIMULATOR v0.8                 ║\n"
+                  << "║         C++ NUCLEAR REACTOR SIMULATOR v1.0                 ║\n"
                   << "║         Difficulty: " << std::left << std::setw(40) << currentDifficulty.name << "║\n"
                   << "╚════════════════════════════════════════════════════════════╝\n"
                   << Color::RESET;
