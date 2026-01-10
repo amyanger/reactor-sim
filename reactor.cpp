@@ -111,6 +111,11 @@ private:
     static constexpr double MIN_TURBINE_TEMP = 200.0;
     static constexpr double MAX_TURBINE_RPM = 3600.0;
 
+    // Steam pressure constants
+    static constexpr double MAX_STEAM_PRESSURE = 150.0;  // bar
+    static constexpr double CRITICAL_PRESSURE = 130.0;   // bar - warning threshold
+    static constexpr double RUPTURE_PRESSURE = 160.0;    // bar - pipe rupture
+
     // Emergency cooling system
     static constexpr double ECCS_COOLANT_BOOST = 50.0;
     static constexpr double ECCS_TEMP_REDUCTION = 100.0;
@@ -150,6 +155,8 @@ private:
     double totalElectricityGenerated;
     bool turbineOnline;
     int maxTurbineTurns;
+    bool pressureReliefOpen;
+    int pressureWarnings;
 
     // Emergency Cooling System
     bool eccsAvailable;
@@ -231,6 +238,8 @@ public:
         totalElectricityGenerated(0.0),
         turbineOnline(false),
         maxTurbineTurns(0),
+        pressureReliefOpen(false),
+        pressureWarnings(0),
         eccsAvailable(true),
         eccsCooldownTimer(0),
         score(0),
@@ -524,6 +533,7 @@ private:
         if (label == "Temp") std::cout << "°C";
         else if (label == "Coolant" || label == "Fuel" || label == "Xenon") std::cout << "%";
         else if (label == "Turbine") std::cout << " RPM";
+        else if (label == "Pressure") std::cout << " bar";
         else if (label == "Output") std::cout << " MW";
         std::cout << "\n";
     }
@@ -558,6 +568,8 @@ private:
 
         std::cout << Color::CYAN << "║ " << Color::RESET;
         printBar("Turbine", turbineRPM, MAX_TURBINE_RPM, 16, false);
+        std::cout << Color::CYAN << "║ " << Color::RESET;
+        printBar("Pressure", steamPressure, MAX_STEAM_PRESSURE, 16, false);
         std::cout << Color::CYAN << "║ " << Color::RESET;
         printBar("Output", electricityOutput, 1000.0, 16, false);
 
@@ -622,6 +634,46 @@ private:
     }
 
     void updateTurbine() {
+        // Calculate steam pressure based on temperature (more realistic model)
+        if (temperature > MIN_TURBINE_TEMP) {
+            double targetPressure = ((temperature - MIN_TURBINE_TEMP) / (currentDifficulty.meltdownTemperature - MIN_TURBINE_TEMP)) * MAX_STEAM_PRESSURE;
+            steamPressure = steamPressure * 0.7 + targetPressure * 0.3;  // Gradual pressure change
+        } else {
+            steamPressure = std::max(0.0, steamPressure - 5.0);
+        }
+
+        // Pressure relief valve logic
+        if (steamPressure > CRITICAL_PRESSURE && !pressureReliefOpen) {
+            pressureReliefOpen = true;
+            std::cout << Color::YELLOW << Color::BOLD
+                      << "🔧 PRESSURE RELIEF VALVE opened at " << std::fixed << std::setprecision(1) << steamPressure << " bar!"
+                      << Color::RESET << "\n";
+            addLogEntry("WARNING", "Pressure relief valve opened");
+            pressureWarnings++;
+        }
+
+        if (pressureReliefOpen) {
+            steamPressure = std::max(0.0, steamPressure - 10.0);
+            if (steamPressure < CRITICAL_PRESSURE * 0.8) {
+                pressureReliefOpen = false;
+                std::cout << Color::GREEN << "✓ Pressure relief valve closed. Pressure stabilized." << Color::RESET << "\n";
+                addLogEntry("EVENT", "Pressure relief valve closed");
+            }
+        }
+
+        // Check for pipe rupture
+        if (steamPressure > RUPTURE_PRESSURE) {
+            std::cout << Color::BG_RED << Color::WHITE << Color::BOLD
+                      << " 💥 STEAM PIPE RUPTURE! Critical pressure exceeded! "
+                      << Color::RESET << "\n";
+            addLogEntry("CRITICAL", "Steam pipe rupture - pressure exceeded " + std::to_string(static_cast<int>(RUPTURE_PRESSURE)) + " bar");
+            coolant = std::max(0.0, coolant - 25.0);
+            temperature += 50.0;
+            turbineOnline = false;
+            steamPressure = 50.0;
+            playAlert();
+        }
+
         if (!turbineOnline) {
             turbineRPM = std::max(0.0, turbineRPM - 100.0);
             electricityOutput = 0.0;
@@ -635,8 +687,14 @@ private:
             return;
         }
 
-        steamPressure = std::min(100.0, (temperature - MIN_TURBINE_TEMP) / 8.0);
-        double targetRPM = (steamPressure / 100.0) * MAX_TURBINE_RPM;
+        // Pressure warning
+        if (steamPressure > CRITICAL_PRESSURE * 0.9) {
+            std::cout << Color::RED << "⚠ HIGH STEAM PRESSURE: " << std::fixed << std::setprecision(1) << steamPressure
+                      << " bar (max " << MAX_STEAM_PRESSURE << ")" << Color::RESET << "\n";
+        }
+
+        double pressureRatio = std::min(1.0, steamPressure / MAX_STEAM_PRESSURE);
+        double targetRPM = pressureRatio * MAX_TURBINE_RPM;
 
         if (turbineRPM < targetRPM) {
             turbineRPM = std::min(targetRPM, turbineRPM + 200.0);
