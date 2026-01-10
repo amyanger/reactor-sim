@@ -74,6 +74,12 @@ enum class Achievement {
     XENON_MASTER,       // Successfully manage xenon poisoning 5 times
     NIGHTMARE_SURVIVOR, // Complete 25 turns on Nightmare
     ELECTRICIAN,        // Keep turbine at max output for 10 turns
+    GRID_HERO,          // Maintain 95%+ grid satisfaction for 20 turns
+    WEATHER_WARRIOR,    // Survive 5 storms
+    DIESEL_DEPENDENT,   // Run diesel generator for 50+ turns total
+    PRESSURE_PERFECT,   // Never trigger pressure relief valve in 50 turns
+    RADIATION_SAFE,     // Keep radiation below warning level for 100 turns
+    MARATHON_RUNNER,    // Complete 500 turns
     ACHIEVEMENT_COUNT
 };
 
@@ -93,7 +99,13 @@ const AchievementInfo ACHIEVEMENT_INFO[] = {
     {"Perfect Run", "50 turns without SCRAM", "✨"},
     {"Xenon Master", "Handle xenon poisoning 5 times", "☢️"},
     {"Nightmare Survivor", "25 turns on Nightmare", "👻"},
-    {"Electrician", "Max turbine output for 10 turns", "🔌"}
+    {"Electrician", "Max turbine output for 10 turns", "🔌"},
+    {"Grid Hero", "95%+ satisfaction for 20 turns", "🔋"},
+    {"Weather Warrior", "Survive 5 storms", "⛈️"},
+    {"Diesel Dependent", "50+ turns on diesel power", "⛽"},
+    {"Pressure Perfect", "No relief valve in 50 turns", "🔧"},
+    {"Radiation Safe", "Low radiation for 100 turns", "🛡️"},
+    {"Marathon Runner", "Complete 500 turns", "🏃"}
 };
 
 struct DifficultySettings {
@@ -217,6 +229,12 @@ private:
     bool tipsEnabled;
     int lastTipTurn;
 
+    // Achievement tracking
+    int highSatisfactionTurns;
+    int stormsSurvived;
+    int turnsWithoutPressureRelief;
+    int safeRadiationTurns;
+
     static WeatherInfo getWeatherInfo(Weather w) {
         switch (w) {
             case Weather::CLEAR:    return {"Clear", "☀️", 1.0, 1.0, "Optimal conditions"};
@@ -325,6 +343,10 @@ public:
         demandPenalty(0),
         tipsEnabled(true),
         lastTipTurn(-10),
+        highSatisfactionTurns(0),
+        stormsSurvived(0),
+        turnsWithoutPressureRelief(0),
+        safeRadiationTurns(0),
         score(0),
         turns(0),
         scramCount(0),
@@ -462,6 +484,7 @@ private:
         if (turns >= 10) unlockAchievement(Achievement::FIRST_STEPS);
         if (turns >= 50) unlockAchievement(Achievement::SURVIVOR);
         if (turns >= 100) unlockAchievement(Achievement::VETERAN);
+        if (turns >= 500) unlockAchievement(Achievement::MARATHON_RUNNER);
 
         // Power generation achievements
         if (totalElectricityGenerated >= 100) unlockAchievement(Achievement::POWER_PLAYER);
@@ -481,6 +504,38 @@ private:
 
         // Electrician achievement
         if (maxTurbineTurns >= 10) unlockAchievement(Achievement::ELECTRICIAN);
+
+        // Grid satisfaction tracking
+        if (demandSatisfaction >= 95.0) {
+            highSatisfactionTurns++;
+            if (highSatisfactionTurns >= 20) unlockAchievement(Achievement::GRID_HERO);
+        } else {
+            highSatisfactionTurns = 0;
+        }
+
+        // Storm survival tracking
+        if (stormsSurvived >= 5) unlockAchievement(Achievement::WEATHER_WARRIOR);
+
+        // Diesel achievement
+        if (dieselRuntime >= 50) unlockAchievement(Achievement::DIESEL_DEPENDENT);
+
+        // Pressure relief tracking
+        if (!pressureReliefOpen) {
+            turnsWithoutPressureRelief++;
+            if (turnsWithoutPressureRelief >= 50 && turns >= 50) {
+                unlockAchievement(Achievement::PRESSURE_PERFECT);
+            }
+        } else {
+            turnsWithoutPressureRelief = 0;
+        }
+
+        // Radiation safety tracking
+        if (radiationLevel < WARNING_RADIATION) {
+            safeRadiationTurns++;
+            if (safeRadiationTurns >= 100) unlockAchievement(Achievement::RADIATION_SAFE);
+        } else {
+            safeRadiationTurns = 0;
+        }
     }
 
     void displayHelp() const {
@@ -961,6 +1016,11 @@ private:
             Weather newWeather = static_cast<Weather>(weatherDist(rng));
 
             if (newWeather != currentWeather) {
+                // Track storm survival
+                if (currentWeather == Weather::STORM) {
+                    stormsSurvived++;
+                }
+
                 WeatherInfo info = getWeatherInfo(newWeather);
                 std::cout << Color::CYAN << "🌡️ Weather change: " << info.icon << " " << info.name
                           << Color::DIM << " - " << info.description << Color::RESET << "\n";
