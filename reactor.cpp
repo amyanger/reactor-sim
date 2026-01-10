@@ -45,6 +45,23 @@ enum class Difficulty {
     NIGHTMARE
 };
 
+enum class Weather {
+    CLEAR,
+    CLOUDY,
+    RAIN,
+    STORM,
+    HEATWAVE,
+    COLD_SNAP
+};
+
+struct WeatherInfo {
+    std::string name;
+    std::string icon;
+    double coolingModifier;    // Affects natural cooling rate
+    double eventModifier;      // Affects random event chance
+    std::string description;
+};
+
 // Achievement definitions
 enum class Achievement {
     FIRST_STEPS,        // Complete 10 turns
@@ -185,6 +202,23 @@ private:
     double totalRadiationExposure;
     int radiationAlarms;
 
+    // Weather system
+    Weather currentWeather;
+    int weatherDuration;
+    int weatherChangeCooldown;
+
+    static WeatherInfo getWeatherInfo(Weather w) {
+        switch (w) {
+            case Weather::CLEAR:    return {"Clear", "☀️", 1.0, 1.0, "Optimal conditions"};
+            case Weather::CLOUDY:   return {"Cloudy", "☁️", 1.1, 1.0, "Slightly improved cooling"};
+            case Weather::RAIN:     return {"Rain", "🌧️", 1.3, 0.9, "Enhanced cooling, fewer events"};
+            case Weather::STORM:    return {"Storm", "⛈️", 1.2, 1.5, "Risk of lightning damage"};
+            case Weather::HEATWAVE: return {"Heatwave", "🔥", 0.6, 1.2, "Reduced cooling efficiency"};
+            case Weather::COLD_SNAP:return {"Cold Snap", "❄️", 1.5, 0.8, "Excellent cooling"};
+            default:                return {"Clear", "☀️", 1.0, 1.0, "Optimal conditions"};
+        }
+    }
+
     // Scoring system
     int score;
     int turns;
@@ -272,6 +306,9 @@ public:
         radiationLevel(BACKGROUND_RADIATION),
         totalRadiationExposure(0.0),
         radiationAlarms(0),
+        currentWeather(Weather::CLEAR),
+        weatherDuration(10),
+        weatherChangeCooldown(0),
         score(0),
         turns(0),
         scramCount(0),
@@ -576,10 +613,12 @@ private:
     }
 
     void displayDashboard() const {
+        WeatherInfo weatherInfo = getWeatherInfo(currentWeather);
         std::cout << "\n" << Color::BOLD << Color::CYAN << "╔════════════════════════════════════════════════════╗" << Color::RESET << "\n";
         std::string pauseIndicator = paused ? (Color::BG_YELLOW + Color::WHITE + " PAUSED " + Color::RESET + Color::CYAN) : "";
-        std::cout << Color::BOLD << Color::CYAN << "║         REACTOR DASHBOARD [" << currentDifficulty.name << "]"
-                  << std::setw(24 - static_cast<int>(currentDifficulty.name.length()) - (paused ? 8 : 0)) << "" << pauseIndicator << "║" << Color::RESET << "\n";
+        std::cout << Color::BOLD << Color::CYAN << "║   REACTOR DASHBOARD [" << currentDifficulty.name << "] "
+                  << weatherInfo.icon << " " << weatherInfo.name
+                  << std::setw(15 - static_cast<int>(currentDifficulty.name.length()) - static_cast<int>(weatherInfo.name.length()) - (paused ? 8 : 0)) << "" << pauseIndicator << "║" << Color::RESET << "\n";
         std::cout << Color::BOLD << Color::CYAN << "╠════════════════════════════════════════════════════╣" << Color::RESET << "\n";
 
         // Core section
@@ -884,6 +923,58 @@ private:
         }
     }
 
+    void updateWeather() {
+        weatherDuration--;
+
+        if (weatherDuration <= 0) {
+            // Change weather
+            std::uniform_int_distribution<int> weatherDist(0, 5);
+            Weather newWeather = static_cast<Weather>(weatherDist(rng));
+
+            if (newWeather != currentWeather) {
+                WeatherInfo info = getWeatherInfo(newWeather);
+                std::cout << Color::CYAN << "🌡️ Weather change: " << info.icon << " " << info.name
+                          << Color::DIM << " - " << info.description << Color::RESET << "\n";
+                addLogEntry("EVENT", "Weather changed to " + info.name);
+                currentWeather = newWeather;
+            }
+
+            // Random duration between 5-20 turns
+            std::uniform_int_distribution<int> durationDist(5, 20);
+            weatherDuration = durationDist(rng);
+        }
+
+        // Storm can cause random equipment damage
+        if (currentWeather == Weather::STORM) {
+            std::uniform_int_distribution<int> stormDist(0, 20);
+            if (stormDist(rng) == 0) {
+                std::cout << Color::YELLOW << Color::BOLD
+                          << "⚡ LIGHTNING STRIKE near the facility!"
+                          << Color::RESET << "\n";
+                addLogEntry("WARNING", "Lightning strike detected");
+
+                // Random effect
+                std::uniform_int_distribution<int> effectDist(0, 2);
+                switch (effectDist(rng)) {
+                    case 0:
+                        std::cout << Color::YELLOW << "   Turbine RPM fluctuation" << Color::RESET << "\n";
+                        if (turbineOnline) turbineRPM *= 0.9;
+                        break;
+                    case 1:
+                        std::cout << Color::YELLOW << "   Minor sensor interference" << Color::RESET << "\n";
+                        break;
+                    case 2:
+                        std::cout << Color::RED << "   External power grid disruption!" << Color::RESET << "\n";
+                        if (!dieselRunning && dieselAutoStart && dieselFuel > 0) {
+                            dieselRunning = true;
+                            std::cout << Color::GREEN << "   Diesel generator auto-started." << Color::RESET << "\n";
+                        }
+                        break;
+                }
+            }
+        }
+    }
+
     void updateStatistics() {
         // Track peak values
         if (temperature > peakTemperature) peakTemperature = temperature;
@@ -1061,7 +1152,11 @@ private:
 
         temperature += power * POWER_TO_HEAT_RATIO;
         coolant = std::max(0.0, coolant - currentDifficulty.coolantLossRate);
-        temperature = std::max(0.0, temperature - NATURAL_COOLING_RATE);
+
+        // Apply weather-modified cooling
+        WeatherInfo weatherInfo = getWeatherInfo(currentWeather);
+        double effectiveCooling = NATURAL_COOLING_RATE * weatherInfo.coolingModifier;
+        temperature = std::max(0.0, temperature - effectiveCooling);
 
         if (coolant < CRITICAL_COOLANT) {
             playSound();
@@ -1077,6 +1172,7 @@ private:
         updateECCS();
         updateDieselGenerator();
         updateRadiation();
+        updateWeather();
 
         // Update statistics
         updateStatistics();
