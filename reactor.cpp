@@ -213,6 +213,10 @@ private:
     int demandBonus;             // Bonus points for meeting demand
     int demandPenalty;           // Penalty for not meeting demand
 
+    // Tips system
+    bool tipsEnabled;
+    int lastTipTurn;
+
     static WeatherInfo getWeatherInfo(Weather w) {
         switch (w) {
             case Weather::CLEAR:    return {"Clear", "☀️", 1.0, 1.0, "Optimal conditions"};
@@ -319,6 +323,8 @@ public:
         demandSatisfaction(0.0),
         demandBonus(0),
         demandPenalty(0),
+        tipsEnabled(true),
+        lastTipTurn(-10),
         score(0),
         turns(0),
         scramCount(0),
@@ -513,6 +519,8 @@ private:
                   << std::setw(31) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   sound  : Toggle sound effects"
                   << std::setw(25) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   tips   : Toggle operator tips"
+                  << std::setw(26) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   h      : Display this help screen"
                   << std::setw(22) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   q      : Quit the simulation"
@@ -1056,6 +1064,57 @@ private:
         }
     }
 
+    void displayContextualTip() {
+        if (!tipsEnabled || turns - lastTipTurn < 5) return;
+
+        std::string tip;
+
+        // Context-sensitive tips
+        if (temperature > currentDifficulty.scramTemperature * 0.8) {
+            tip = "TIP: Temperature approaching SCRAM threshold. Consider raising control rods or activating ECCS.";
+        } else if (coolant < 30.0) {
+            tip = "TIP: Coolant critically low! Use 'r' to refill or 'e' for ECCS.";
+        } else if (xenonLevel > 60.0) {
+            tip = "TIP: High xenon levels. Maintain moderate power to allow xenon decay.";
+        } else if (!turbineOnline && temperature > MIN_TURBINE_TEMP * 1.5) {
+            tip = "TIP: Temperature is high enough for turbine operation. Use 't' to start the turbine.";
+        } else if (demandSatisfaction < 50.0 && turbineOnline) {
+            tip = "TIP: Low grid satisfaction. Try lowering control rods to increase power output.";
+        } else if (steamPressure > CRITICAL_PRESSURE * 0.85) {
+            tip = "TIP: Steam pressure is building. The relief valve will open automatically if it gets too high.";
+        } else if (dieselFuel < 30.0 && !dieselRunning) {
+            tip = "TIP: Diesel fuel is low. Use 'df' to refill before an emergency.";
+        } else if (radiationLevel > MAX_SAFE_RADIATION * 2) {
+            tip = "TIP: Elevated radiation. Check coolant levels and reduce power if needed.";
+        } else if (currentWeather == Weather::HEATWAVE && temperature > 400.0) {
+            tip = "TIP: Heatwave reducing cooling. Consider lower power output during hot weather.";
+        } else if (turns < 5) {
+            tip = "TIP: New session! Lower control rods (try 30-40) to increase power, 't' for turbine.";
+        } else if (turns == 10) {
+            tip = "TIP: Use 'stats' to view session statistics, 'log' to see event history.";
+        } else {
+            // Random general tips occasionally
+            if (turns % 15 == 0) {
+                std::vector<std::string> generalTips = {
+                    "TIP: Optimal steam temperature is around 500°C for best efficiency.",
+                    "TIP: ECCS has a 10-turn cooldown. Use it wisely!",
+                    "TIP: The diesel generator auto-starts when power drops below 50 MW.",
+                    "TIP: Use 'p' to pause and plan your next moves.",
+                    "TIP: Weather affects cooling - Cold Snap is great, Heatwave is challenging.",
+                    "TIP: Grid demand peaks in morning (7-9) and evening (17-21).",
+                    "TIP: Higher difficulty means faster fuel depletion and more events."
+                };
+                std::uniform_int_distribution<size_t> tipDist(0, generalTips.size() - 1);
+                tip = generalTips[tipDist(rng)];
+            }
+        }
+
+        if (!tip.empty()) {
+            std::cout << Color::DIM << Color::CYAN << tip << Color::RESET << "\n";
+            lastTipTurn = turns;
+        }
+    }
+
     void updateStatistics() {
         // Track peak values
         if (temperature > peakTemperature) peakTemperature = temperature;
@@ -1457,6 +1516,7 @@ public:
             displayDashboard();
             displayScore();
             displayStatus();
+            displayContextualTip();
 
             std::cout << Color::GREEN << "\nControl rods (0-100%, current "
                       << static_cast<int>(controlRods * 100)
@@ -1534,6 +1594,12 @@ public:
             if (input == "sound") {
                 soundEnabled = !soundEnabled;
                 std::cout << (soundEnabled ? Color::GREEN + "🔊 Sound enabled" : Color::YELLOW + "🔇 Sound disabled") << Color::RESET << "\n";
+                continue;
+            }
+
+            if (input == "tips") {
+                tipsEnabled = !tipsEnabled;
+                std::cout << (tipsEnabled ? Color::GREEN + "💡 Tips enabled" : Color::YELLOW + "💡 Tips disabled") << Color::RESET << "\n";
                 continue;
             }
 
