@@ -196,6 +196,7 @@ private:
     static constexpr const char* SAVE_FILE = ".reactor_save";
 
     bool soundEnabled;
+    bool paused;
 
     static DifficultySettings getDifficultySettings(Difficulty diff) {
         switch (diff) {
@@ -249,7 +250,8 @@ public:
         lowestCoolant(INITIAL_COOLANT),
         highestXenon(0.0),
         rng(std::chrono::steady_clock::now().time_since_epoch().count()),
-        soundEnabled(true) {
+        soundEnabled(true),
+        paused(false) {
         loadHighScore();
         loadAchievements();
     }
@@ -411,6 +413,8 @@ private:
                   << std::setw(23) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   log    : View operator event log"
                   << std::setw(23) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   p      : Pause/Resume simulation"
+                  << std::setw(23) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   s/save : Save game"
                   << std::setw(37) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   l/load : Load saved game"
@@ -526,8 +530,9 @@ private:
 
     void displayDashboard() const {
         std::cout << "\n" << Color::BOLD << Color::CYAN << "╔════════════════════════════════════════════════════╗" << Color::RESET << "\n";
+        std::string pauseIndicator = paused ? (Color::BG_YELLOW + Color::WHITE + " PAUSED " + Color::RESET + Color::CYAN) : "";
         std::cout << Color::BOLD << Color::CYAN << "║         REACTOR DASHBOARD [" << currentDifficulty.name << "]"
-                  << std::setw(24 - static_cast<int>(currentDifficulty.name.length())) << "" << "║" << Color::RESET << "\n";
+                  << std::setw(24 - static_cast<int>(currentDifficulty.name.length()) - (paused ? 8 : 0)) << "" << pauseIndicator << "║" << Color::RESET << "\n";
         std::cout << Color::BOLD << Color::CYAN << "╠════════════════════════════════════════════════════╣" << Color::RESET << "\n";
 
         // Core section
@@ -1116,6 +1121,26 @@ public:
             if (input == "sound") {
                 soundEnabled = !soundEnabled;
                 std::cout << (soundEnabled ? Color::GREEN + "🔊 Sound enabled" : Color::YELLOW + "🔇 Sound disabled") << Color::RESET << "\n";
+                continue;
+            }
+
+            if (input == "p" || input == "pause") {
+                paused = !paused;
+                if (paused) {
+                    std::cout << Color::BG_YELLOW << Color::WHITE << Color::BOLD
+                              << " ⏸ SIMULATION PAUSED " << Color::RESET << "\n";
+                    std::cout << Color::DIM << "Use 'p' or 'pause' to resume. You can still view stats, log, and achievements."
+                              << Color::RESET << "\n";
+                    addLogEntry("ACTION", "Simulation paused by operator");
+                } else {
+                    std::cout << Color::GREEN << Color::BOLD << "▶ SIMULATION RESUMED" << Color::RESET << "\n";
+                    addLogEntry("ACTION", "Simulation resumed");
+                }
+                continue;
+            }
+
+            if (paused) {
+                std::cout << Color::YELLOW << "⏸ Simulation paused. Use 'p' to resume before making changes." << Color::RESET << "\n";
                 continue;
             }
 
