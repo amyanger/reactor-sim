@@ -126,6 +126,13 @@ private:
     static constexpr double DIESEL_FUEL_CONSUMPTION = 2.0;  // per turn when running
     static constexpr double DIESEL_POWER_OUTPUT = 50.0;     // MW equivalent
 
+    // Radiation constants (in mSv/h)
+    static constexpr double BACKGROUND_RADIATION = 0.1;
+    static constexpr double MAX_SAFE_RADIATION = 20.0;      // Normal operations
+    static constexpr double WARNING_RADIATION = 100.0;       // Warning level
+    static constexpr double DANGER_RADIATION = 500.0;        // Evacuation level
+    static constexpr double LETHAL_RADIATION = 2000.0;       // Fatal dose
+
     // Xenon poisoning
     static constexpr double MAX_XENON = 100.0;
     static constexpr double XENON_DECAY_RATE = 2.0;
@@ -172,6 +179,11 @@ private:
     bool dieselRunning;
     bool dieselAutoStart;
     int dieselRuntime;
+
+    // Radiation monitoring
+    double radiationLevel;
+    double totalRadiationExposure;
+    int radiationAlarms;
 
     // Scoring system
     int score;
@@ -257,6 +269,9 @@ public:
         dieselRunning(false),
         dieselAutoStart(true),
         dieselRuntime(0),
+        radiationLevel(BACKGROUND_RADIATION),
+        totalRadiationExposure(0.0),
+        radiationAlarms(0),
         score(0),
         turns(0),
         scramCount(0),
@@ -552,9 +567,10 @@ private:
 
         std::cout << color << std::fixed << std::setprecision(1) << value << Color::RESET;
         if (label == "Temp") std::cout << "°C";
-        else if (label == "Coolant" || label == "Fuel" || label == "Xenon") std::cout << "%";
+        else if (label == "Coolant" || label == "Fuel" || label == "Xenon" || label == "Diesel") std::cout << "%";
         else if (label == "Turbine") std::cout << " RPM";
         else if (label == "Pressure") std::cout << " bar";
+        else if (label == "Radiation") std::cout << " mSv/h";
         else if (label == "Output") std::cout << " MW";
         std::cout << "\n";
     }
@@ -579,6 +595,8 @@ private:
         printBar("Fuel", fuel, 100.0, 16, true);
         std::cout << Color::CYAN << "║ " << Color::RESET;
         printBar("Xenon", xenonLevel, MAX_XENON, 16, false);
+        std::cout << Color::CYAN << "║ " << Color::RESET;
+        printBar("Radiation", radiationLevel, DANGER_RADIATION, 16, false);
 
         // Turbine section
         std::cout << Color::CYAN << "╠════════════════════════════════════════════════════╣" << Color::RESET << "\n";
@@ -818,6 +836,54 @@ private:
         addLogEntry("ACTION", "Diesel fuel tank refilled");
     }
 
+    void updateRadiation() {
+        // Base radiation from power level
+        double powerRadiation = (power / 100.0) * 5.0;
+
+        // Additional radiation from high temperature (containment stress)
+        double tempFactor = 0.0;
+        if (temperature > currentDifficulty.scramTemperature * 0.8) {
+            tempFactor = ((temperature - currentDifficulty.scramTemperature * 0.8) /
+                         (currentDifficulty.meltdownTemperature - currentDifficulty.scramTemperature * 0.8)) * 50.0;
+        }
+
+        // Additional radiation from low coolant (exposed fuel)
+        double coolantFactor = 0.0;
+        if (coolant < 30.0) {
+            coolantFactor = ((30.0 - coolant) / 30.0) * 100.0;
+        }
+
+        // Calculate target radiation
+        double targetRadiation = BACKGROUND_RADIATION + powerRadiation + tempFactor + coolantFactor;
+
+        // Smooth transition
+        radiationLevel = radiationLevel * 0.7 + targetRadiation * 0.3;
+
+        // Track total exposure
+        totalRadiationExposure += radiationLevel / 60.0;  // per turn
+
+        // Radiation warnings
+        if (radiationLevel > DANGER_RADIATION) {
+            std::cout << Color::BG_RED << Color::WHITE << Color::BOLD
+                      << " ☢ RADIATION CRITICAL: " << std::fixed << std::setprecision(1) << radiationLevel << " mSv/h - EVACUATE! "
+                      << Color::RESET << "\n";
+            playAlert();
+            radiationAlarms++;
+            addLogEntry("CRITICAL", "Radiation level critical - evacuation recommended");
+        } else if (radiationLevel > WARNING_RADIATION) {
+            std::cout << Color::RED << Color::BOLD
+                      << "☢ HIGH RADIATION: " << std::fixed << std::setprecision(1) << radiationLevel << " mSv/h"
+                      << Color::RESET << "\n";
+            if (radiationAlarms % 5 == 0) {  // Don't spam
+                addLogEntry("WARNING", "Elevated radiation levels detected");
+            }
+            radiationAlarms++;
+        } else if (radiationLevel > MAX_SAFE_RADIATION) {
+            std::cout << Color::YELLOW << "⚠ Elevated radiation: "
+                      << std::fixed << std::setprecision(1) << radiationLevel << " mSv/h" << Color::RESET << "\n";
+        }
+    }
+
     void updateStatistics() {
         // Track peak values
         if (temperature > peakTemperature) peakTemperature = temperature;
@@ -1010,6 +1076,7 @@ private:
         updateTurbine();
         updateECCS();
         updateDieselGenerator();
+        updateRadiation();
 
         // Update statistics
         updateStatistics();
