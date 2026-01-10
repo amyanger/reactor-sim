@@ -207,6 +207,12 @@ private:
     int weatherDuration;
     int weatherChangeCooldown;
 
+    // Power grid demand system
+    double gridDemand;           // Current demand in MW
+    double demandSatisfaction;   // How well we're meeting demand (0-100%)
+    int demandBonus;             // Bonus points for meeting demand
+    int demandPenalty;           // Penalty for not meeting demand
+
     static WeatherInfo getWeatherInfo(Weather w) {
         switch (w) {
             case Weather::CLEAR:    return {"Clear", "☀️", 1.0, 1.0, "Optimal conditions"};
@@ -309,6 +315,10 @@ public:
         currentWeather(Weather::CLEAR),
         weatherDuration(10),
         weatherChangeCooldown(0),
+        gridDemand(500.0),
+        demandSatisfaction(0.0),
+        demandBonus(0),
+        demandPenalty(0),
         score(0),
         turns(0),
         scramCount(0),
@@ -665,7 +675,7 @@ private:
     }
 
     void displayScore() const {
-        std::cout << Color::YELLOW << "╭─────────────────────────────────────────────────────╮" << Color::RESET << "\n";
+        std::cout << Color::YELLOW << "╭───────────────────────────────────────────────────────────╮" << Color::RESET << "\n";
         std::cout << Color::YELLOW << "│ " << Color::BOLD << "SCORE:" << Color::RESET
                   << std::setw(7) << score
                   << Color::YELLOW << " │ " << Color::BOLD << "HIGH:" << Color::RESET
@@ -675,7 +685,18 @@ private:
                   << Color::YELLOW << " │ " << Color::BOLD << "MW·h:" << Color::RESET
                   << std::setw(6) << static_cast<int>(totalElectricityGenerated)
                   << Color::YELLOW << " │" << Color::RESET << "\n";
-        std::cout << Color::YELLOW << "╰─────────────────────────────────────────────────────╯" << Color::RESET << "\n";
+
+        // Grid demand line
+        std::string demandColor = demandSatisfaction >= 90 ? Color::GREEN :
+                                 (demandSatisfaction >= 60 ? Color::YELLOW : Color::RED);
+        std::cout << Color::YELLOW << "│ " << Color::BOLD << "GRID DEMAND:" << Color::RESET
+                  << std::setw(4) << static_cast<int>(gridDemand) << " MW"
+                  << Color::YELLOW << " │ " << Color::BOLD << "SATISFACTION:" << Color::RESET
+                  << demandColor << std::setw(3) << static_cast<int>(demandSatisfaction) << "%" << Color::RESET
+                  << Color::YELLOW << " │ " << Color::BOLD << "BONUS:" << Color::RESET
+                  << std::setw(5) << demandBonus
+                  << Color::YELLOW << " │" << Color::RESET << "\n";
+        std::cout << Color::YELLOW << "╰───────────────────────────────────────────────────────────╯" << Color::RESET << "\n";
     }
 
     void displayStatus() const {
@@ -975,6 +996,66 @@ private:
         }
     }
 
+    void updateGridDemand() {
+        // Demand fluctuates over time
+        std::uniform_int_distribution<int> fluctDist(-50, 50);
+        double fluctuation = fluctDist(rng);
+
+        // Base demand varies by time of day simulation (every 10 turns is an "hour")
+        int hourOfDay = (turns / 10) % 24;
+        double baseDemand;
+        if (hourOfDay >= 7 && hourOfDay <= 9) {
+            baseDemand = 700.0;  // Morning peak
+        } else if (hourOfDay >= 17 && hourOfDay <= 21) {
+            baseDemand = 800.0;  // Evening peak
+        } else if (hourOfDay >= 0 && hourOfDay <= 5) {
+            baseDemand = 300.0;  // Night low
+        } else {
+            baseDemand = 500.0;  // Normal
+        }
+
+        // Weather affects demand
+        WeatherInfo weatherInfo = getWeatherInfo(currentWeather);
+        if (currentWeather == Weather::HEATWAVE) {
+            baseDemand *= 1.3;  // AC usage
+        } else if (currentWeather == Weather::COLD_SNAP) {
+            baseDemand *= 1.2;  // Heating
+        }
+
+        gridDemand = std::max(200.0, std::min(1000.0, baseDemand + fluctuation));
+
+        // Calculate satisfaction
+        double effectiveOutput = electricityOutput;
+        if (dieselRunning) {
+            effectiveOutput += DIESEL_POWER_OUTPUT;
+        }
+
+        demandSatisfaction = std::min(100.0, (effectiveOutput / gridDemand) * 100.0);
+
+        // Bonus/penalty system
+        if (demandSatisfaction >= 95.0) {
+            int bonus = static_cast<int>((demandSatisfaction - 90.0) * 2);
+            demandBonus += bonus;
+            score += bonus;
+        } else if (demandSatisfaction < 50.0) {
+            int penalty = static_cast<int>((50.0 - demandSatisfaction) / 5);
+            demandPenalty += penalty;
+            // Don't subtract from score for demand issues, just don't give bonus
+        }
+
+        // Warnings
+        if (demandSatisfaction < 30.0) {
+            std::cout << Color::RED << Color::BOLD
+                      << "⚠ GRID ALERT: Power output critically below demand! ("
+                      << std::fixed << std::setprecision(0) << demandSatisfaction << "%)"
+                      << Color::RESET << "\n";
+        } else if (demandSatisfaction < 60.0) {
+            std::cout << Color::YELLOW
+                      << "⚠ Low grid satisfaction: " << std::fixed << std::setprecision(0) << demandSatisfaction << "%"
+                      << Color::RESET << "\n";
+        }
+    }
+
     void updateStatistics() {
         // Track peak values
         if (temperature > peakTemperature) peakTemperature = temperature;
@@ -1173,6 +1254,7 @@ private:
         updateDieselGenerator();
         updateRadiation();
         updateWeather();
+        updateGridDemand();
 
         // Update statistics
         updateStatistics();
