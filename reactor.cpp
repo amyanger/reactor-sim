@@ -121,6 +121,11 @@ private:
     static constexpr double ECCS_TEMP_REDUCTION = 100.0;
     static constexpr int ECCS_COOLDOWN = 10;
 
+    // Diesel generator constants
+    static constexpr double DIESEL_FUEL_CAPACITY = 100.0;
+    static constexpr double DIESEL_FUEL_CONSUMPTION = 2.0;  // per turn when running
+    static constexpr double DIESEL_POWER_OUTPUT = 50.0;     // MW equivalent
+
     // Xenon poisoning
     static constexpr double MAX_XENON = 100.0;
     static constexpr double XENON_DECAY_RATE = 2.0;
@@ -161,6 +166,12 @@ private:
     // Emergency Cooling System
     bool eccsAvailable;
     int eccsCooldownTimer;
+
+    // Diesel Generator System
+    double dieselFuel;
+    bool dieselRunning;
+    bool dieselAutoStart;
+    int dieselRuntime;
 
     // Scoring system
     int score;
@@ -242,6 +253,10 @@ public:
         pressureWarnings(0),
         eccsAvailable(true),
         eccsCooldownTimer(0),
+        dieselFuel(DIESEL_FUEL_CAPACITY),
+        dieselRunning(false),
+        dieselAutoStart(true),
+        dieselRuntime(0),
         score(0),
         turns(0),
         scramCount(0),
@@ -416,6 +431,12 @@ private:
                   << std::setw(18) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   e      : Activate ECCS (-" << ECCS_PENALTY << " pts, " << ECCS_COOLDOWN << " turn CD)"
                   << std::setw(12) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   d      : Toggle diesel generator"
+                  << std::setw(23) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   df     : Refill diesel fuel"
+                  << std::setw(28) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║" << Color::RESET << "   da     : Toggle diesel auto-start"
+                  << std::setw(22) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   a      : View achievements"
                   << std::setw(29) << "" << Color::CYAN << "║" << Color::RESET << "\n";
         std::cout << Color::CYAN << "║" << Color::RESET << "   stats  : View session statistics"
@@ -573,6 +594,16 @@ private:
         std::cout << Color::CYAN << "║ " << Color::RESET;
         printBar("Output", electricityOutput, 1000.0, 16, false);
 
+        // Diesel generator section
+        std::cout << Color::CYAN << "╠════════════════════════════════════════════════════╣" << Color::RESET << "\n";
+        std::string dieselStatus = dieselRunning ? (Color::GREEN + "RUNNING" + Color::RESET) : (Color::DIM + "STANDBY" + Color::RESET);
+        std::string autoStatus = dieselAutoStart ? "AUTO" : "MANUAL";
+        std::cout << Color::CYAN << "║ " << Color::BOLD << "DIESEL GENERATOR" << Color::RESET
+                  << " [" << dieselStatus << "] [" << autoStatus << "]"
+                  << std::setw(15) << "" << Color::CYAN << "║" << Color::RESET << "\n";
+        std::cout << Color::CYAN << "║ " << Color::RESET;
+        printBar("Diesel", dieselFuel, DIESEL_FUEL_CAPACITY, 16, true);
+
         std::cout << Color::BOLD << Color::CYAN << "╚════════════════════════════════════════════════════╝" << Color::RESET << "\n";
     }
 
@@ -724,6 +755,67 @@ private:
                 std::cout << Color::GREEN << "✓ ECCS recharged and ready!" << Color::RESET << "\n";
             }
         }
+    }
+
+    void updateDieselGenerator() {
+        // Auto-start logic - starts when turbine output drops below 50 MW
+        if (dieselAutoStart && !dieselRunning && electricityOutput < 50.0 && dieselFuel > 0) {
+            dieselRunning = true;
+            std::cout << Color::YELLOW << Color::BOLD
+                      << "🔌 DIESEL GENERATOR auto-started! Low power detected."
+                      << Color::RESET << "\n";
+            addLogEntry("EVENT", "Diesel generator auto-started");
+        }
+
+        if (dieselRunning) {
+            if (dieselFuel > 0) {
+                dieselFuel = std::max(0.0, dieselFuel - DIESEL_FUEL_CONSUMPTION);
+                dieselRuntime++;
+
+                // Diesel helps maintain basic cooling even during low power
+                if (temperature > INITIAL_TEMPERATURE) {
+                    temperature -= 2.0;
+                }
+
+                // Low fuel warning
+                if (dieselFuel < 20.0 && dieselFuel > 0) {
+                    std::cout << Color::YELLOW << "⚠ Diesel fuel low: "
+                              << std::fixed << std::setprecision(1) << dieselFuel << "%" << Color::RESET << "\n";
+                }
+            } else {
+                dieselRunning = false;
+                std::cout << Color::RED << Color::BOLD
+                          << "⚠ DIESEL GENERATOR stopped - OUT OF FUEL!"
+                          << Color::RESET << "\n";
+                addLogEntry("WARNING", "Diesel generator stopped - fuel depleted");
+            }
+        }
+    }
+
+    void toggleDieselGenerator() {
+        if (!dieselRunning && dieselFuel <= 0) {
+            std::cout << Color::RED << "✗ Cannot start diesel generator - no fuel!" << Color::RESET << "\n";
+            return;
+        }
+
+        dieselRunning = !dieselRunning;
+        if (dieselRunning) {
+            std::cout << Color::GREEN << "🔌 Diesel generator started manually." << Color::RESET << "\n";
+            addLogEntry("ACTION", "Diesel generator started manually");
+        } else {
+            std::cout << Color::YELLOW << "🔌 Diesel generator stopped." << Color::RESET << "\n";
+            addLogEntry("ACTION", "Diesel generator stopped");
+        }
+    }
+
+    void refillDiesel() {
+        if (dieselFuel >= DIESEL_FUEL_CAPACITY) {
+            std::cout << Color::YELLOW << "Diesel tank already full." << Color::RESET << "\n";
+            return;
+        }
+        dieselFuel = DIESEL_FUEL_CAPACITY;
+        std::cout << Color::GREEN << "⛽ Diesel tank refilled!" << Color::RESET << "\n";
+        addLogEntry("ACTION", "Diesel fuel tank refilled");
     }
 
     void updateStatistics() {
@@ -917,6 +1009,7 @@ private:
         updateXenon();
         updateTurbine();
         updateECCS();
+        updateDieselGenerator();
 
         // Update statistics
         updateStatistics();
@@ -1153,6 +1246,23 @@ public:
 
             if (input == "e") {
                 activateECCS();
+                continue;
+            }
+
+            if (input == "d") {
+                toggleDieselGenerator();
+                continue;
+            }
+
+            if (input == "df") {
+                refillDiesel();
+                continue;
+            }
+
+            if (input == "da") {
+                dieselAutoStart = !dieselAutoStart;
+                std::cout << (dieselAutoStart ? Color::GREEN + "🔌 Diesel auto-start ENABLED" : Color::YELLOW + "🔌 Diesel auto-start DISABLED") << Color::RESET << "\n";
+                addLogEntry("ACTION", dieselAutoStart ? "Diesel auto-start enabled" : "Diesel auto-start disabled");
                 continue;
             }
 
