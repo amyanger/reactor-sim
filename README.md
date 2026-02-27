@@ -1,6 +1,6 @@
 ☢️ C++ Nuclear Reactor Simulator
 
-A feature-rich, interactive C++ nuclear reactor simulation that lets you try your hand as a reactor operator. Manage control rods, coolant, turbines, and emergency systems while dealing with random events and xenon poisoning. Try not to melt the core!
+A feature-rich, interactive C++ nuclear reactor simulation that lets you try your hand as a reactor operator. Manage control rods, coolant, turbines, and emergency systems while dealing with random events, xenon poisoning, weather, and grid demand. Try not to melt the core!
 
 ---
 
@@ -9,26 +9,37 @@ A feature-rich, interactive C++ nuclear reactor simulation that lets you try you
 ### Core Gameplay
 - **Real-time command-line gameplay**: Control rods, coolant, turbines, and reactor safety
 - **4 Difficulty levels**: Easy, Normal, Hard, and Nightmare with unique parameters
-- **Scoring system**: Points for survival and power generation with difficulty multipliers
+- **Scoring system**: Points for survival, power generation, and grid satisfaction with difficulty multipliers
 - **High score tracking**: Persistent high scores per difficulty level
 
 ### Reactor Systems
-- **Turbine Hall**: Generate electricity from steam for bonus points
+- **Turbine Hall**: Generate electricity from steam with RPM and pressure simulation
 - **Emergency Core Cooling System (ECCS)**: Emergency coolant injection with cooldown
+- **Diesel Generator**: Backup power source with fuel management and auto-start
 - **Xenon-135 Poisoning**: Realistic neutron absorption mechanics
+- **Containment Integrity**: Structural stress, degradation, and breach detection
+- **Radiation Monitoring**: 3-tier radiation warnings with exposure tracking
 - **Fuel burnup & auto SCRAM**: Realistic fuel depletion and emergency shutdowns
 
-### Random Events (12 types)
+### Environmental Systems
+- **Dynamic Weather**: 6 weather types (Clear, Cloudy, Rain, Storm, Heatwave, Cold Snap) affecting cooling and events
+- **Power Grid Demand**: Time-of-day demand simulation with satisfaction scoring
+- **Steam Pressure**: Realistic pressure buildup with relief valve and pipe rupture mechanics
+
+### Random Events (11 types)
 - Coolant leaks, power surges, pump failures
-- Sensor malfunctions, steam leaks, turbine trips
-- Control rod stuck, xenon spikes
+- Steam leaks, turbine trips, xenon spikes
 - Bonus events: efficiency boost, coolant delivery, maintenance crew
 
 ### Meta Features
-- **10 Achievements**: Unlock achievements for various accomplishments
+- **16 Achievements**: Unlock achievements for various accomplishments
 - **Save/Load**: Continue your game later
+- **Operator Tips**: Contextual tips based on reactor state
+- **Event Log**: Track all reactor events and operator actions
+- **Statistics**: Detailed session stats tracking
+- **Pause**: Pause simulation while reviewing data
 - **Sound effects**: Terminal beep alerts for warnings and emergencies
-- **Colorful ASCII dashboard**: See real-time reactor and turbine status
+- **Colorful ASCII dashboard**: Real-time reactor, turbine, grid, and weather status
 
 ---
 
@@ -36,20 +47,20 @@ A feature-rich, interactive C++ nuclear reactor simulation that lets you try you
 
 ### 1. Clone This Repo
 ```bash
-git clone https://github.com/arjun-myanger/reactor-sim.git
+git clone https://github.com/amyanger/reactor-sim.git
 cd reactor-sim
 ```
 
 ### 2. Compile the Code
 ```bash
-# macOS
-clang++ reactor.cpp -o reactor
+# Using Make
+make
 
-# Linux
-g++ reactor.cpp -o reactor
+# Or compile manually
+g++ -std=c++11 -Wall -Wextra -Isrc src/*.cpp -o reactor
 
-# Windows (MinGW)
-g++ reactor.cpp -o reactor.exe
+# Windows (MSYS2 MinGW)
+PATH="/c/msys64/mingw64/bin:$PATH" make
 ```
 
 ### 3. Run the Simulator
@@ -68,10 +79,17 @@ g++ reactor.cpp -o reactor.exe
 | `r` | Refill coolant (-50 points) |
 | `t` | Toggle turbine online/offline |
 | `e` | Activate ECCS emergency cooling |
+| `d` | Toggle diesel generator |
+| `df` | Refill diesel fuel |
+| `da` | Toggle diesel auto-start |
+| `p` / `pause` | Pause/resume simulation |
 | `s` / `save` | Save game |
 | `l` / `load` | Load saved game |
 | `a` | View achievements |
+| `stats` | View session statistics |
+| `log` | View event log |
 | `sound` | Toggle sound effects |
+| `tips` | Toggle operator tips |
 | `h` / `help` | Display help screen |
 | `q` | Quit simulation |
 | `reset` | Restart after SCRAM |
@@ -79,8 +97,10 @@ g++ reactor.cpp -o reactor.exe
 ### Tips
 - **Control Rods**: 0% = max power (risky!), 100% = safest (low power)
 - **Turbine**: Keep temperature around 500°C for optimal electricity generation
-- **ECCS**: Save it for emergencies - 10 turn cooldown after use
+- **ECCS**: Save it for emergencies — 10 turn cooldown after use
 - **Xenon**: Watch for xenon buildup at high power levels
+- **Grid**: Match power output to demand for bonus points
+- **Weather**: Storms can cause lightning strikes; heatwaves reduce cooling
 
 ---
 
@@ -91,6 +111,7 @@ g++ reactor.cpp -o reactor.exe
 | First Steps | Complete 10 turns |
 | Survivor | Complete 50 turns |
 | Veteran Operator | Complete 100 turns |
+| Marathon Runner | Complete 500 turns |
 | Power Player | Generate 100 MW·h |
 | Energy Baron | Generate 500 MW·h |
 | Cool Under Pressure | Recover from 3 SCRAMs |
@@ -98,6 +119,11 @@ g++ reactor.cpp -o reactor.exe
 | Xenon Master | Handle xenon poisoning 5 times |
 | Nightmare Survivor | 25 turns on Nightmare |
 | Electrician | Max turbine output for 10 turns |
+| Grid Hero | 95%+ grid satisfaction for 20 turns |
+| Weather Warrior | Survive 5 storms |
+| Diesel Dependent | 50+ turns on diesel power |
+| Pressure Perfect | No relief valve use in 50 turns |
+| Radiation Safe | Low radiation for 100 turns |
 
 ---
 
@@ -112,13 +138,43 @@ g++ reactor.cpp -o reactor.exe
 
 ---
 
+## 📁 Project Structure
+
+```
+src/
+  types.h              — Enums, colors, weather/achievement/difficulty data
+  constants.h          — All physics/threshold/scoring constants
+  reactor_state.h      — Shared ReactorState struct, message queue
+  xenon.h/.cpp         — Xenon-135 build/decay system
+  turbine.h/.cpp       — Turbine RPM, steam pressure, electricity
+  emergency.h/.cpp     — ECCS + diesel generator
+  radiation.h/.cpp     — Radiation level + exposure tracking
+  containment.h/.cpp   — Containment integrity + breach detection
+  weather.h/.cpp       — Dynamic weather transitions
+  grid.h/.cpp          — Power grid demand simulation
+  scoring.h/.cpp       — Statistics tracking
+  achievements.h/.cpp  — 16 achievement checks + unlock
+  persistence.h/.cpp   — Save/load/highscore file I/O
+  events.h/.cpp        — 11 random event types
+  safety.h/.cpp        — SCRAM + meltdown detection
+  physics.h/.cpp       — Core physics orchestrator
+  renderer.h/.cpp      — All display/UI code
+  input.h/.cpp         — Command parsing + dispatch
+  reactor.h/.cpp       — Game loop orchestrator
+  main.cpp             — Entry point + difficulty selection
+Makefile               — Build configuration
+```
+
+---
+
 ## 📚 Technical Details
 
 - **C++11** compatible
+- Multi-file architecture with shared state pattern
 - Uses modern `<random>` for RNG (std::mt19937)
 - ANSI color codes for terminal output
-- Persistent storage for high scores and achievements
-- Approximately 950 lines of well-commented code
+- Persistent storage for saves, high scores, and achievements
+- ~2,500 lines across 36 source files
 
 ---
 
@@ -138,7 +194,7 @@ Do not use as a reference for real nuclear power plant operation.
 ## 👤 Author
 
 **Arjun Myanger**
-GitHub: https://github.com/arjun-myanger
+GitHub: https://github.com/amyanger
 
 ---
 

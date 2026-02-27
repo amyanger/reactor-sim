@@ -11,6 +11,9 @@ reactor_test
 *.swp
 *.swo
 
+# Claude Code
+CLAUDE.md
+
 # macOS
 .DS_Store
 
