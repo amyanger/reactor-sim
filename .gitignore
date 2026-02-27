@@ -1,5 +1,6 @@
 # Compiled binaries
 reactor
+reactor.exe
 reactor_test
 *.o
 *.out
