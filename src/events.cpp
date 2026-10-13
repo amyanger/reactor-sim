@@ -6,10 +6,10 @@
 #include <algorithm>
 
 void RandomEventSystem::process(ReactorState& state) {
-    std::uniform_int_distribution<int> eventDist(
-        0, static_cast<int>(state.currentDifficulty.eventChance) - 1);
-
-    if (eventDist(state.rng) != 0) return;
+    // Base chance is 1 in eventChance per turn, scaled by the weather
+    double chance = getWeatherInfo(state.currentWeather).eventModifier / state.currentDifficulty.eventChance;
+    std::bernoulli_distribution eventDist(std::min(1.0, chance));
+    if (!eventDist(state.rng)) return;
 
     state.eventsExperienced++;
 
@@ -107,7 +107,7 @@ void RandomEventSystem::process(ReactorState& state) {
         state.addLogEntry("EVENT", "Coolant delivery received");
 
     } else {
-        state.temperature = std::max(RC::INITIAL_TEMPERATURE, state.temperature - 30.0);
+        state.temperature = std::max(0.0, state.temperature - 30.0);
         state.xenonLevel = std::max(0.0, state.xenonLevel - 10.0);
         std::ostringstream oss;
         oss << Color::GREEN << Color::BOLD

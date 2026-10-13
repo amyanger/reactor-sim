@@ -2,8 +2,6 @@
 #include "renderer.h"
 #include "input.h"
 #include "physics.h"
-#include "events.h"
-#include "safety.h"
 #include "persistence.h"
 
 #include <iostream>
@@ -18,7 +16,7 @@ ReactorSimulator::ReactorSimulator(Difficulty diff)
 void ReactorSimulator::run() {
     Renderer::displayBanner(state);
 
-    while (state.running) {
+    while (!state.gameOver) {
         Renderer::displayDashboard(state);
         Renderer::displayScore(state);
         Renderer::displayStatus(state);
@@ -29,15 +27,15 @@ void ReactorSimulator::run() {
         if (result == InputResult::QUIT) break;
         if (result == InputResult::CONTINUE) continue;
 
-        // ADVANCE_TURN
-        CorePhysics::update(state);
-        RandomEventSystem::process(state);
-        SafetySystem::check(state);
-        Renderer::drainMessages(state);
-
-        if (!state.running && !SafetySystem::handleScramReset(state)) {
-            break;
+        if (CorePhysics::advanceTurn(state)) {
+            PersistenceSystem::saveAchievements(state);
         }
+        Renderer::drainMessages(state);
+    }
+
+    if (state.gameOver) {
+        std::cout << "\n" << Color::BG_RED << Color::WHITE << Color::BOLD
+                  << " GAME OVER: " << state.gameOverReason << " " << Color::RESET << "\n";
     }
 
     PersistenceSystem::saveHighScore(state);

@@ -26,8 +26,8 @@ bool AchievementSystem::check(ReactorState& state) {
     if (state.turns >= 500) unlock(state, Achievement::MARATHON_RUNNER);
 
     // Power generation achievements
-    if (state.totalElectricityGenerated >= 100) unlock(state, Achievement::POWER_PLAYER);
-    if (state.totalElectricityGenerated >= 500) unlock(state, Achievement::ENERGY_BARON);
+    if (state.totalElectricityGenerated >= 5000) unlock(state, Achievement::POWER_PLAYER);
+    if (state.totalElectricityGenerated >= 25000) unlock(state, Achievement::ENERGY_BARON);
 
     // SCRAM-related achievements
     if (state.scramRecoveries >= 3) unlock(state, Achievement::COOL_UNDER_PRESSURE);
@@ -44,8 +44,9 @@ bool AchievementSystem::check(ReactorState& state) {
     // Electrician achievement
     if (state.maxTurbineTurns >= 10) unlock(state, Achievement::ELECTRICIAN);
 
-    // Grid satisfaction tracking
-    if (state.demandSatisfaction >= 95.0) {
+    // Grid tracking: supply must match demand within 10%, not just exceed it
+    double supply = state.gridDemand > 0.0 ? state.electricityOutput / state.gridDemand * 100.0 : 0.0;
+    if (supply >= 90.0 && supply <= RC::GRID_OVERSUPPLY) {
         state.highSatisfactionTurns++;
         if (state.highSatisfactionTurns >= 20) unlock(state, Achievement::GRID_HERO);
     } else {
@@ -58,14 +59,14 @@ bool AchievementSystem::check(ReactorState& state) {
     // Diesel achievement
     if (state.dieselRuntime >= 50) unlock(state, Achievement::DIESEL_DEPENDENT);
 
-    // Pressure relief tracking
-    if (!state.pressureReliefOpen) {
+    // Pressure relief tracking: only turns spent generating count
+    if (state.pressureReliefOpen) {
+        state.turnsWithoutPressureRelief = 0;
+    } else if (state.electricityOutput > 0.0) {
         state.turnsWithoutPressureRelief++;
         if (state.turnsWithoutPressureRelief >= 50 && state.turns >= 50) {
             unlock(state, Achievement::PRESSURE_PERFECT);
         }
-    } else {
-        state.turnsWithoutPressureRelief = 0;
     }
 
     // Radiation safety tracking

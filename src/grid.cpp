@@ -9,8 +9,7 @@ void GridSystem::update(ReactorState& state) {
     std::uniform_int_distribution<int> fluctDist(-50, 50);
     double fluctuation = fluctDist(state.rng);
 
-    // Base demand varies by time of day simulation (every 10 turns is an "hour")
-    int hourOfDay = (state.turns / 10) % 24;
+    int hourOfDay = (state.turns / RC::TURNS_PER_HOUR) % 24;
     double baseDemand;
     if (hourOfDay >= 7 && hourOfDay <= 9) {
         baseDemand = 700.0;  // Morning peak
@@ -29,25 +28,32 @@ void GridSystem::update(ReactorState& state) {
         baseDemand *= 1.2;  // Heating
     }
 
-    state.gridDemand = std::max(200.0, std::min(1000.0, baseDemand + fluctuation));
+    // Demand drifts toward the time-of-day target instead of jumping every turn
+    double targetDemand = std::max(200.0, std::min(1000.0, baseDemand + fluctuation));
+    state.gridDemand += (targetDemand - state.gridDemand) * RC::GRID_DEMAND_SMOOTHING;
 
-    // Calculate satisfaction
-    double effectiveOutput = state.electricityOutput;
-    if (state.dieselRunning) {
-        effectiveOutput += RC::DIESEL_POWER_OUTPUT;
-    }
+    // Supply as a percentage of demand; above 100% means overproduction
+    double supply = state.electricityOutput / state.gridDemand * 100.0;
+    state.demandSatisfaction = std::min(100.0, supply);
 
-    state.demandSatisfaction = std::min(100.0, (effectiveOutput / state.gridDemand) * 100.0);
-
-    // Bonus/penalty system
-    if (state.demandSatisfaction >= 95.0) {
-        int bonus = static_cast<int>((state.demandSatisfaction - 90.0) * 2);
+    int multiplier = state.currentDifficulty.scoreMultiplier;
+    if (supply >= 95.0 && supply <= RC::GRID_OVERSUPPLY) {
+        int bonus = RC::GRID_MATCH_BONUS * multiplier;
         state.demandBonus += bonus;
         state.score += bonus;
-    } else if (state.demandSatisfaction < 50.0) {
-        int penalty = static_cast<int>((50.0 - state.demandSatisfaction) / 5);
+    } else {
+        int penalty = 0;
+        if (supply < RC::GRID_UNDERSUPPLY) {
+            penalty = static_cast<int>((RC::GRID_UNDERSUPPLY - supply) / 5.0) * multiplier;
+        } else if (supply > RC::GRID_OVERSUPPLY) {
+            penalty = static_cast<int>((supply - RC::GRID_OVERSUPPLY) / 5.0) * multiplier;
+            std::ostringstream oss;
+            oss << Color::YELLOW << "\xe2\x9a\xa0 Grid oversupply: " << std::fixed << std::setprecision(0)
+                << supply << "% of demand. Frequency rising, reduce output." << Color::RESET << "\n";
+            state.addMessage(oss.str());
+        }
         state.demandPenalty += penalty;
-        // Don't subtract from score for demand issues, just don't give bonus
+        state.score = std::max(0, state.score - penalty);
     }
 
     // Warnings

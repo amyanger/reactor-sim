@@ -8,5 +8,7 @@ public:
     static void activateECCS(ReactorState& state);
     static void updateDiesel(ReactorState& state);
     static void toggleDiesel(ReactorState& state);
-    static void refillDiesel(ReactorState& state);
+    // Refills cost points and a turn; they return false if nothing was done
+    static bool refillDiesel(ReactorState& state);
+    static bool refillCoolant(ReactorState& state);
 };

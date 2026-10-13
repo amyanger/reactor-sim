@@ -14,6 +14,10 @@ class InputHandler {
 public:
     static InputResult handleInput(ReactorState& state);
 
-private:
-    static double parseControlRodInput(const std::string& input, double current);
+    // Trim whitespace and lowercase a command
+    static std::string normalize(const std::string& input);
+
+    // Parse "0".."100" (optional trailing '%') into a 0..1 rod fraction.
+    // Returns false for anything that isn't a finite number.
+    static bool parseControlRodInput(const std::string& input, double& out);
 };

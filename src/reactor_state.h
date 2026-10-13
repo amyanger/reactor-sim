@@ -7,10 +7,6 @@
 #include <set>
 #include <string>
 #include <random>
-#include <chrono>
-#include <sstream>
-#include <iomanip>
-#include <algorithm>
 
 struct GameMessage {
     std::string text;  // Pre-formatted with ANSI codes
@@ -33,16 +29,27 @@ struct ReactorState {
 
     // Core state
     double neutrons;
-    double controlRods;
+    double controlRods;      // actual insertion, 0..1
+    double rodTarget;        // operator setpoint; rods travel toward it at ROD_SPEED
+    double reactivity;       // net reactivity in dollars at end of last turn
     double temperature;
     double coolant;
-    double power;
+    double power;            // fission power, MW thermal
+    double decayHeat;        // MW thermal, persists after shutdown
+    double heatRemoved;      // MW thermal carried away by the coolant last turn
     double fuel;
-    bool running;
+    bool running;            // false while SCRAMmed (rods locked in)
+    bool promptCritical;     // set by physics this turn, consumed by the safety check
+
+    // Game over (meltdown or containment failure): cannot be reset
+    bool gameOver;
+    std::string gameOverReason;
 
     // Xenon poisoning
     double xenonLevel;
+    double iodineLevel;
     int xenonHandledCount;
+    bool xenonTransientActive;
 
     // Turbine system
     double turbineRPM;
@@ -62,6 +69,7 @@ struct ReactorState {
     double dieselFuel;
     bool dieselRunning;
     bool dieselAutoStart;
+    bool dieselStartedByAuto;
     int dieselRuntime;
 
     // Radiation monitoring
@@ -72,7 +80,6 @@ struct ReactorState {
     // Weather system
     Weather currentWeather;
     int weatherDuration;
-    int weatherChangeCooldown;
 
     // Power grid demand system
     double gridDemand;
@@ -102,6 +109,7 @@ struct ReactorState {
     int eventsExperienced;
     int turnsWithoutScram;
     int scramRecoveries;
+    bool awaitingRecovery;   // reset after a SCRAM, power not yet restored
 
     // Statistics tracking
     double peakTemperature;
@@ -131,23 +139,31 @@ struct ReactorState {
     // Message queue — subsystems push here, renderer drains
     std::vector<GameMessage> messages;
 
-    // Constructor
-    ReactorState(Difficulty diff)
+    // Pass a fixed seed for reproducible runs (tests, replays)
+    explicit ReactorState(Difficulty diff, unsigned int seed = std::random_device{}())
         : currentDifficulty(getDifficultySettings(diff)),
           neutrons(RC::INITIAL_NEUTRONS),
           controlRods(RC::INITIAL_CONTROL_RODS),
+          rodTarget(RC::INITIAL_CONTROL_RODS),
+          reactivity(0.0),
           temperature(RC::INITIAL_TEMPERATURE),
           coolant(RC::INITIAL_COOLANT),
-          power(0.0),
+          power(RC::INITIAL_NEUTRONS * RC::NEUTRON_TO_POWER),
+          decayHeat(0.0),
+          heatRemoved(0.0),
           fuel(RC::INITIAL_FUEL),
           running(true),
+          promptCritical(false),
+          gameOver(false),
           xenonLevel(0.0),
+          iodineLevel(0.0),
           xenonHandledCount(0),
-          turbineRPM(0.0),
+          xenonTransientActive(false),
+          turbineRPM(RC::MAX_TURBINE_RPM),
           steamPressure(0.0),
           electricityOutput(0.0),
           totalElectricityGenerated(0.0),
-          turbineOnline(false),
+          turbineOnline(true),
           maxTurbineTurns(0),
           pressureReliefOpen(false),
           pressureWarnings(0),
@@ -156,13 +172,13 @@ struct ReactorState {
           dieselFuel(RC::DIESEL_FUEL_CAPACITY),
           dieselRunning(false),
           dieselAutoStart(true),
+          dieselStartedByAuto(false),
           dieselRuntime(0),
           radiationLevel(RC::BACKGROUND_RADIATION),
           totalRadiationExposure(0.0),
           radiationAlarms(0),
           currentWeather(Weather::CLEAR),
           weatherDuration(10),
-          weatherChangeCooldown(0),
           gridDemand(500.0),
           demandSatisfaction(0.0),
           demandBonus(0),
@@ -182,6 +198,7 @@ struct ReactorState {
           eventsExperienced(0),
           turnsWithoutScram(0),
           scramRecoveries(0),
+          awaitingRecovery(false),
           peakTemperature(RC::INITIAL_TEMPERATURE),
           peakPower(0.0),
           peakElectricity(0.0),
@@ -191,7 +208,7 @@ struct ReactorState {
           criticalEvents(0),
           lowestCoolant(RC::INITIAL_COOLANT),
           highestXenon(0.0),
-          rng(std::chrono::steady_clock::now().time_since_epoch().count()),
+          rng(seed),
           soundEnabled(true),
           paused(false) {}
 

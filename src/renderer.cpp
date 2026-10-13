@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "turbine.h"
 
 #include <iostream>
 #include <iomanip>
@@ -100,7 +101,7 @@ void Renderer::displayDashboard(const ReactorState& state) {
     std::cout << Color::CYAN << "\xe2\x95\x91 " << Color::RESET;
     printBar("Pressure", state.steamPressure, RC::MAX_STEAM_PRESSURE, 16, false);
     std::cout << Color::CYAN << "\xe2\x95\x91 " << Color::RESET;
-    printBar("Output", state.electricityOutput, 1000.0, 16, false);
+    printBar("Output", state.electricityOutput, TurbineSystem::maxOutput(state.currentDifficulty), 16, false);
 
     // Diesel generator section
     std::cout << Color::CYAN
@@ -147,11 +148,18 @@ void Renderer::displayScore(const ReactorState& state) {
 }
 
 void Renderer::displayStatus(const ReactorState& state) {
+    if (!state.running) {
+        std::cout << Color::BG_RED << Color::WHITE << Color::BOLD << " REACTOR TRIPPED " << Color::RESET
+                  << Color::RED << " Rods locked in. Cool the core, then type 'reset'." << Color::RESET << "\n";
+    }
     std::cout << Color::DIM << "Neutrons: " << Color::RESET
               << std::fixed << std::setprecision(0) << state.neutrons
               << Color::DIM << " | Rods: " << Color::RESET
-              << static_cast<int>(state.controlRods * 100) << "%"
-              << Color::DIM << " | Power: " << Color::RESET << std::setprecision(1) << state.power
+              << static_cast<int>(std::lround(state.controlRods * 100)) << "%"
+              << Color::DIM << " | Reactivity: " << Color::RESET << std::showpos << std::setprecision(2)
+              << state.reactivity << "$" << std::noshowpos
+              << Color::DIM << " | Power: " << Color::RESET << std::setprecision(0) << state.power << " MWt"
+              << Color::DIM << " (decay " << state.decayHeat << ")" << Color::RESET
               << Color::DIM << " | Events: " << Color::RESET << state.eventsExperienced
               << Color::DIM << " | \xf0\x9f\x8f\x86 " << Color::RESET
               << state.unlockedAchievements.size() << "/"
@@ -161,77 +169,81 @@ void Renderer::displayStatus(const ReactorState& state) {
 void Renderer::displayHelp(const ReactorState& state) {
     std::cout << "\n" << Color::BOLD << Color::CYAN
               << "\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x97\n"
-              << "\xe2\x95\x91                    OPERATOR'S MANUAL                      \xe2\x95\x91\n"
+              << "\xe2\x95\x91                    OPERATOR'S MANUAL                       \xe2\x95\x91\n"
               << "\xe2\x95\xa0\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\xa3"
               << Color::RESET << "\n";
 
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << Color::BOLD << " COMMANDS:" << Color::RESET
               << std::setw(50) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   0-100  : Set control rod insertion percentage"
-              << std::setw(10) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   r      : Refill coolant (-" << RC::REFILL_PENALTY << " points)"
-              << std::setw(22) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   0-100  : Set rod target (rods move " << static_cast<int>(RC::ROD_SPEED * 100) << "%/turn)"
+              << std::setw(14) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   Enter  : Advance one turn"
+              << std::setw(32) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   r      : Coolant makeup +" << static_cast<int>(RC::COOLANT_REFILL_AMOUNT) << "% (-" << RC::REFILL_PENALTY << " pts, 1 turn)"
+              << std::setw(11) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   t      : Toggle turbine online/offline"
-              << std::setw(18) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(19) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   e      : Activate ECCS (-" << RC::ECCS_PENALTY << " pts, " << RC::ECCS_COOLDOWN << " turn CD)"
               << std::setw(12) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   d      : Toggle diesel generator"
-              << std::setw(23) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   df     : Refill diesel fuel"
-              << std::setw(28) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   da     : Toggle diesel auto-start"
-              << std::setw(22) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   a      : View achievements"
-              << std::setw(29) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   stats  : View session statistics"
-              << std::setw(23) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   log    : View operator event log"
-              << std::setw(23) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   p      : Pause/Resume simulation"
-              << std::setw(23) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   s/save : Save game"
-              << std::setw(37) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   l/load : Load saved game"
-              << std::setw(31) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   sound  : Toggle sound effects"
               << std::setw(25) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   df     : Refill diesel (-" << RC::DIESEL_REFILL_PENALTY << " pts, 1 turn)"
+              << std::setw(17) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   da     : Toggle diesel auto-start"
+              << std::setw(24) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   reset  : Reset a SCRAM once the core has cooled"
+              << std::setw(10) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   a      : View achievements"
+              << std::setw(31) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   stats  : View session statistics"
+              << std::setw(25) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   log    : View operator event log"
+              << std::setw(25) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   p      : Pause/Resume simulation"
+              << std::setw(25) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   s/save : Save game"
+              << std::setw(39) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   l/load : Load saved game"
+              << std::setw(33) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   sound  : Toggle sound effects"
+              << std::setw(28) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   tips   : Toggle operator tips"
-              << std::setw(26) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(28) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   h      : Display this help screen"
-              << std::setw(22) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(24) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   q      : Quit the simulation"
-              << std::setw(27) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(29) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
 
     std::cout << Color::CYAN << "\xe2\x95\xa0\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\xa3" << Color::RESET << "\n";
 
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << Color::BOLD << " XENON POISONING:" << Color::RESET
-              << std::setw(42) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(43) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 Xenon-135 builds up during operation"
-              << std::setw(17) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(19) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 High xenon absorbs neutrons, reducing power"
-              << std::setw(10) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
-    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 Reduce power gradually to manage xenon"
-              << std::setw(15) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(12) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+    std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 It peaks hours after a SCRAM or power cut"
+              << std::setw(14) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
 
     std::cout << Color::CYAN << "\xe2\x95\xa0\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\xa3" << Color::RESET << "\n";
 
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << Color::BOLD << " EMERGENCY CORE COOLING SYSTEM (ECCS):" << Color::RESET
-              << std::setw(20) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(22) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 Instantly adds " << RC::ECCS_COOLANT_BOOST << "% coolant"
-              << std::setw(27) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(29) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 Reduces temperature by " << RC::ECCS_TEMP_REDUCTION << "\xc2\xb0""C"
-              << std::setw(21) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(27) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 " << RC::ECCS_COOLDOWN << " turn cooldown after use"
-              << std::setw(28) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(29) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
 
     std::cout << Color::CYAN << "\xe2\x95\xa0\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\xa3" << Color::RESET << "\n";
 
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << Color::BOLD << " SAFETY LIMITS (" << state.currentDifficulty.name << " mode):" << Color::RESET
-              << std::setw(34 - static_cast<int>(state.currentDifficulty.name.length())) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(37 - static_cast<int>(state.currentDifficulty.name.length())) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 SCRAM at: " << state.currentDifficulty.scramTemperature << "\xc2\xb0""C or "
-              << RC::SCRAM_NEUTRONS << " neutrons" << std::setw(15) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << RC::SCRAM_NEUTRONS << " neutrons" << std::setw(23) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
     std::cout << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "   \xe2\x80\xa2 MELTDOWN at: " << state.currentDifficulty.meltdownTemperature << "\xc2\xb0""C"
-              << std::setw(31) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
+              << std::setw(36) << "" << Color::CYAN << "\xe2\x95\x91" << Color::RESET << "\n";
 
     std::cout << Color::BOLD << Color::CYAN
               << "\xe2\x95\x9a\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d"
@@ -446,15 +458,15 @@ void Renderer::displayContextualTip(ReactorState& state) {
 
     // Context-sensitive tips
     if (state.temperature > state.currentDifficulty.scramTemperature * 0.8) {
-        tip = "TIP: Temperature approaching SCRAM threshold. Consider raising control rods or activating ECCS.";
+        tip = "TIP: Temperature approaching SCRAM threshold. Insert control rods or activate ECCS.";
     } else if (state.coolant < 30.0) {
         tip = "TIP: Coolant critically low! Use 'r' to refill or 'e' for ECCS.";
     } else if (state.xenonLevel > 60.0) {
-        tip = "TIP: High xenon levels. Maintain moderate power to allow xenon decay.";
+        tip = "TIP: High xenon. Withdraw rods to hold power; xenon burns off once flux is back up.";
     } else if (!state.turbineOnline && state.temperature > RC::MIN_TURBINE_TEMP * 1.5) {
         tip = "TIP: Temperature is high enough for turbine operation. Use 't' to start the turbine.";
     } else if (state.demandSatisfaction < 50.0 && state.turbineOnline) {
-        tip = "TIP: Low grid satisfaction. Try lowering control rods to increase power output.";
+        tip = "TIP: Low grid satisfaction. Withdraw control rods a little to increase power output.";
     } else if (state.steamPressure > RC::CRITICAL_PRESSURE * 0.85) {
         tip = "TIP: Steam pressure is building. The relief valve will open automatically if it gets too high.";
     } else if (state.dieselFuel < 30.0 && !state.dieselRunning) {
@@ -464,16 +476,16 @@ void Renderer::displayContextualTip(ReactorState& state) {
     } else if (state.currentWeather == Weather::HEATWAVE && state.temperature > 400.0) {
         tip = "TIP: Heatwave reducing cooling. Consider lower power output during hot weather.";
     } else if (state.turns < 5) {
-        tip = "TIP: New session! Lower control rods (try 30-40) to increase power, 't' for turbine.";
+        tip = "TIP: New session! Lower the rod target a little at a time (try 55) to raise power.";
     } else if (state.turns == 10) {
         tip = "TIP: Use 'stats' to view session statistics, 'log' to see event history.";
     } else {
         // Random general tips occasionally
         if (state.turns % 15 == 0) {
             std::vector<std::string> generalTips = {
-                "TIP: Optimal steam temperature is around 500\xc2\xb0""C for best efficiency.",
+                "TIP: Turbine efficiency peaks at a core temperature of 550\xc2\xb0""C.",
                 "TIP: ECCS has a 10-turn cooldown. Use it wisely!",
-                "TIP: The diesel generator auto-starts when power drops below 50 MW.",
+                "TIP: The diesel powers the coolant pumps whenever the turbine cannot.",
                 "TIP: Use 'p' to pause and plan your next moves.",
                 "TIP: Weather affects cooling - Cold Snap is great, Heatwave is challenging.",
                 "TIP: Grid demand peaks in morning (7-9) and evening (17-21).",
@@ -497,7 +509,7 @@ void Renderer::displayBanner(const ReactorState& state) {
               << "\xe2\x95\x91         Difficulty: " << std::left << std::setw(40) << state.currentDifficulty.name << "\xe2\x95\x91\n"
               << "\xe2\x95\x9a\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d\n"
               << Color::RESET;
-    std::cout << Color::DIM << "Commands: 0-100, r, t, e, s(ave), l(oad), a, stats, h(elp), q(uit)\n"
+    std::cout << Color::DIM << "Commands: 0-100 (rod target), Enter (next turn), r, t, e, reset, s(ave), l(oad), a, stats, h(elp), q(uit)\n"
               << Color::RESET;
 }
 

@@ -6,23 +6,34 @@
 #include <algorithm>
 #include <string>
 
+double TurbineSystem::efficiency(double temperature) {
+    if (temperature < RC::MIN_TURBINE_TEMP) return 0.0;
+    double offset = (temperature - RC::OPTIMAL_STEAM_TEMP) / RC::EFFICIENCY_WIDTH;
+    double eta = RC::PEAK_EFFICIENCY * (1.0 - offset * offset);
+    return std::max(RC::MIN_EFFICIENCY, std::min(RC::PEAK_EFFICIENCY, eta));
+}
+
+double TurbineSystem::maxOutput(const DifficultySettings& diff) {
+    return RC::RATED_THERMAL_MW * RC::PEAK_EFFICIENCY * diff.turbineEfficiency;
+}
+
 void TurbineSystem::update(ReactorState& state) {
-    // Calculate steam pressure based on temperature (more realistic model)
+    // Steam pressure follows core temperature; with the turbine down nothing draws steam off
     if (state.temperature > RC::MIN_TURBINE_TEMP) {
-        double targetPressure = ((state.temperature - RC::MIN_TURBINE_TEMP) / (state.currentDifficulty.meltdownTemperature - RC::MIN_TURBINE_TEMP)) * RC::MAX_STEAM_PRESSURE;
-        state.steamPressure = state.steamPressure * 0.7 + targetPressure * 0.3;  // Gradual pressure change
+        double targetPressure = RC::PRESSURE_PER_DEGREE * (state.temperature - RC::MIN_TURBINE_TEMP);
+        if (!state.turbineOnline) targetPressure *= RC::PRESSURE_OFFLINE_FACTOR;
+        state.steamPressure += (targetPressure - state.steamPressure) * RC::PRESSURE_SMOOTHING;
     } else {
         state.steamPressure = std::max(0.0, state.steamPressure - 5.0);
     }
 
-    // Pressure relief valve logic
     if (state.steamPressure > RC::CRITICAL_PRESSURE && !state.pressureReliefOpen) {
         state.pressureReliefOpen = true;
         {
             std::ostringstream oss;
             oss << Color::YELLOW << Color::BOLD
                 << "\xf0\x9f\x94\xa7 PRESSURE RELIEF VALVE opened at "
-                << std::fixed << std::setprecision(1) << state.steamPressure << " bar!"
+                << std::fixed << std::setprecision(1) << state.steamPressure << " bar! Venting steam and coolant."
                 << Color::RESET << "\n";
             state.addMessage(oss.str());
         }
@@ -31,8 +42,8 @@ void TurbineSystem::update(ReactorState& state) {
     }
 
     if (state.pressureReliefOpen) {
-        state.steamPressure = std::max(0.0, state.steamPressure - 10.0);
-        if (state.steamPressure < RC::CRITICAL_PRESSURE * 0.8) {
+        state.steamPressure = std::max(0.0, state.steamPressure - RC::RELIEF_PRESSURE_DROP);
+        if (state.steamPressure < RC::CRITICAL_PRESSURE * RC::RELIEF_CLOSE_FRACTION) {
             state.pressureReliefOpen = false;
             {
                 std::ostringstream oss;
@@ -43,7 +54,6 @@ void TurbineSystem::update(ReactorState& state) {
         }
     }
 
-    // Check for pipe rupture
     if (state.steamPressure > RC::RUPTURE_PRESSURE) {
         {
             std::ostringstream oss;
@@ -53,15 +63,16 @@ void TurbineSystem::update(ReactorState& state) {
             state.addAlertMessage(oss.str());
         }
         state.addLogEntry("CRITICAL", "Steam pipe rupture - pressure exceeded " + std::to_string(static_cast<int>(RC::RUPTURE_PRESSURE)) + " bar");
-        state.coolant = std::max(0.0, state.coolant - 25.0);
-        state.temperature += 50.0;
+        state.coolant = std::max(0.0, state.coolant - RC::RUPTURE_COOLANT_LOSS);
+        state.temperature += RC::RUPTURE_HEAT;
         state.turbineOnline = false;
         state.steamPressure = 50.0;
     }
 
     if (!state.turbineOnline) {
-        state.turbineRPM = std::max(0.0, state.turbineRPM - 100.0);
+        state.turbineRPM = std::max(0.0, state.turbineRPM - RC::TURBINE_SPINDOWN_RPM);
         state.electricityOutput = 0.0;
+        state.maxTurbineTurns = 0;
         return;
     }
 
@@ -71,36 +82,29 @@ void TurbineSystem::update(ReactorState& state) {
             oss << Color::YELLOW << "\xe2\x9a\xa0 Turbine cannot operate below " << RC::MIN_TURBINE_TEMP << "\xc2\xb0""C!" << Color::RESET << "\n";
             state.addMessage(oss.str());
         }
-        state.turbineRPM = std::max(0.0, state.turbineRPM - 50.0);
+        state.turbineRPM = std::max(0.0, state.turbineRPM - RC::TURBINE_SPINDOWN_RPM);
         state.electricityOutput = 0.0;
+        state.maxTurbineTurns = 0;
         return;
     }
 
-    // Pressure warning
     if (state.steamPressure > RC::CRITICAL_PRESSURE * 0.9) {
         std::ostringstream oss;
         oss << Color::RED << "\xe2\x9a\xa0 HIGH STEAM PRESSURE: " << std::fixed << std::setprecision(1) << state.steamPressure
-            << " bar (max " << RC::MAX_STEAM_PRESSURE << ")" << Color::RESET << "\n";
+            << " bar (relief at " << RC::CRITICAL_PRESSURE << ")" << Color::RESET << "\n";
         state.addMessage(oss.str());
     }
 
-    double pressureRatio = std::min(1.0, state.steamPressure / RC::MAX_STEAM_PRESSURE);
-    double targetRPM = pressureRatio * RC::MAX_TURBINE_RPM;
+    state.turbineRPM = std::min(RC::MAX_TURBINE_RPM, state.turbineRPM + RC::TURBINE_SPINUP_RPM);
 
-    if (state.turbineRPM < targetRPM) {
-        state.turbineRPM = std::min(targetRPM, state.turbineRPM + 200.0);
-    } else {
-        state.turbineRPM = std::max(targetRPM, state.turbineRPM - 200.0);
-    }
+    // Electricity comes from the heat the coolant actually carried out of the core
+    double rpmFraction = state.turbineRPM / RC::MAX_TURBINE_RPM;
+    double output = state.heatRemoved * efficiency(state.temperature)
+                  * state.currentDifficulty.turbineEfficiency * rpmFraction;
+    state.electricityOutput = std::min(output, maxOutput(state.currentDifficulty));  // generator rating
+    state.totalElectricityGenerated += state.electricityOutput * RC::HOURS_PER_TURN;
 
-    double tempEfficiency = 1.0 - std::abs(state.temperature - RC::OPTIMAL_STEAM_TEMP) / 1000.0;
-    tempEfficiency = std::max(0.3, std::min(1.0, tempEfficiency));
-
-    state.electricityOutput = (state.turbineRPM / RC::MAX_TURBINE_RPM) * 1000.0 * tempEfficiency * state.currentDifficulty.turbineEfficiency;
-    state.totalElectricityGenerated += state.electricityOutput / 60.0;
-
-    // Track max turbine output for achievement
-    if (state.electricityOutput > 900.0) {
+    if (state.electricityOutput >= RC::ELECTRICIAN_FRACTION * maxOutput(state.currentDifficulty)) {
         state.maxTurbineTurns++;
     } else {
         state.maxTurbineTurns = 0;

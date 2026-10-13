@@ -6,7 +6,7 @@
 
 void RadiationSystem::update(ReactorState& state) {
     // Base radiation from power level
-    double powerRadiation = (state.power / 100.0) * 5.0;
+    double powerRadiation = (state.power / RC::RATED_THERMAL_MW) * RC::FULL_POWER_RADIATION;
 
     // Additional radiation from high temperature (containment stress)
     double tempFactor = 0.0;
@@ -23,12 +23,13 @@ void RadiationSystem::update(ReactorState& state) {
 
     // Calculate target radiation
     double targetRadiation = RC::BACKGROUND_RADIATION + powerRadiation + tempFactor + coolantFactor;
+    if (state.containmentBreach) targetRadiation *= RC::BREACH_RADIATION_MULTIPLIER;
 
     // Smooth transition
     state.radiationLevel = state.radiationLevel * 0.7 + targetRadiation * 0.3;
 
     // Track total exposure
-    state.totalRadiationExposure += state.radiationLevel / 60.0;  // per turn
+    state.totalRadiationExposure += state.radiationLevel * RC::HOURS_PER_TURN;
 
     // Radiation warnings
     if (state.radiationLevel > RC::DANGER_RADIATION) {

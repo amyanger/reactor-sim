@@ -1,4 +1,5 @@
 #include "emergency.h"
+#include "physics.h"
 
 #include <sstream>
 #include <iomanip>
@@ -28,7 +29,7 @@ void EmergencySystem::activateECCS(ReactorState& state) {
     state.eccsCooldownTimer = RC::ECCS_COOLDOWN;
 
     state.coolant = std::min(100.0, state.coolant + RC::ECCS_COOLANT_BOOST);
-    state.temperature = std::max(RC::INITIAL_TEMPERATURE, state.temperature - RC::ECCS_TEMP_REDUCTION);
+    state.temperature = std::max(0.0, state.temperature - RC::ECCS_TEMP_REDUCTION);
     state.score = std::max(0, state.score - RC::ECCS_PENALTY);
 
     {
@@ -47,15 +48,30 @@ void EmergencySystem::activateECCS(ReactorState& state) {
 }
 
 void EmergencySystem::updateDiesel(ReactorState& state) {
-    // Auto-start logic - starts when turbine output drops below 50 MW
-    if (state.dieselAutoStart && !state.dieselRunning && state.electricityOutput < 50.0 && state.dieselFuel > 0) {
+    // The diesel powers the coolant pumps when the turbine can't
+    bool pumpsOnTurbine = CorePhysics::turbinePowersPumps(state);
+    bool coreNeedsCooling = state.power + state.decayHeat > RC::DIESEL_NEEDED_HEAT_MW
+                         || state.temperature > RC::DIESEL_NEEDED_TEMP;
+
+    if (state.dieselAutoStart && !state.dieselRunning && !pumpsOnTurbine && coreNeedsCooling
+        && state.dieselFuel > 0) {
         state.dieselRunning = true;
+        state.dieselStartedByAuto = true;
         std::ostringstream oss;
         oss << Color::YELLOW << Color::BOLD
-            << "\xf0\x9f\x94\x8c DIESEL GENERATOR auto-started! Low power detected."
+            << "\xf0\x9f\x94\x8c DIESEL GENERATOR auto-started! Coolant pumps lost turbine power."
             << Color::RESET << "\n";
         state.addMessage(oss.str());
         state.addLogEntry("EVENT", "Diesel generator auto-started");
+    } else if (state.dieselRunning && state.dieselStartedByAuto && (pumpsOnTurbine || !coreNeedsCooling)) {
+        state.dieselRunning = false;
+        state.dieselStartedByAuto = false;
+        std::ostringstream oss;
+        oss << Color::GREEN << "\xf0\x9f\x94\x8c Diesel generator auto-stopped. "
+            << (pumpsOnTurbine ? "Pumps back on turbine power." : "Core no longer needs forced cooling.")
+            << Color::RESET << "\n";
+        state.addMessage(oss.str());
+        state.addLogEntry("EVENT", "Diesel generator auto-stopped");
     }
 
     if (state.dieselRunning) {
@@ -63,13 +79,7 @@ void EmergencySystem::updateDiesel(ReactorState& state) {
             state.dieselFuel = std::max(0.0, state.dieselFuel - RC::DIESEL_FUEL_CONSUMPTION);
             state.dieselRuntime++;
 
-            // Diesel helps maintain basic cooling even during low power
-            if (state.temperature > RC::INITIAL_TEMPERATURE) {
-                state.temperature -= 2.0;
-            }
-
-            // Low fuel warning
-            if (state.dieselFuel < 20.0 && state.dieselFuel > 0) {
+            if (state.dieselFuel < RC::DIESEL_LOW_FUEL && state.dieselFuel > 0) {
                 std::ostringstream oss;
                 oss << Color::YELLOW << "\xe2\x9a\xa0 Diesel fuel low: "
                     << std::fixed << std::setprecision(1) << state.dieselFuel << "%" << Color::RESET << "\n";
@@ -77,6 +87,7 @@ void EmergencySystem::updateDiesel(ReactorState& state) {
             }
         } else {
             state.dieselRunning = false;
+            state.dieselStartedByAuto = false;
             std::ostringstream oss;
             oss << Color::RED << Color::BOLD
                 << "\xe2\x9a\xa0 DIESEL GENERATOR stopped - OUT OF FUEL!"
@@ -96,6 +107,7 @@ void EmergencySystem::toggleDiesel(ReactorState& state) {
     }
 
     state.dieselRunning = !state.dieselRunning;
+    state.dieselStartedByAuto = false;
     if (state.dieselRunning) {
         std::ostringstream oss;
         oss << Color::GREEN << "\xf0\x9f\x94\x8c Diesel generator started manually." << Color::RESET << "\n";
@@ -109,16 +121,36 @@ void EmergencySystem::toggleDiesel(ReactorState& state) {
     }
 }
 
-void EmergencySystem::refillDiesel(ReactorState& state) {
+bool EmergencySystem::refillDiesel(ReactorState& state) {
     if (state.dieselFuel >= RC::DIESEL_FUEL_CAPACITY) {
         std::ostringstream oss;
         oss << Color::YELLOW << "Diesel tank already full." << Color::RESET << "\n";
         state.addMessage(oss.str());
-        return;
+        return false;
     }
     state.dieselFuel = RC::DIESEL_FUEL_CAPACITY;
+    state.score = std::max(0, state.score - RC::DIESEL_REFILL_PENALTY);
     std::ostringstream oss;
-    oss << Color::GREEN << "\xe2\x9b\xbd Diesel tank refilled!" << Color::RESET << "\n";
+    oss << Color::GREEN << "\xe2\x9b\xbd Diesel tank refilled! " << Color::RESET
+        << Color::RED << "(-" << RC::DIESEL_REFILL_PENALTY << " pts, takes a turn)" << Color::RESET << "\n";
     state.addMessage(oss.str());
     state.addLogEntry("ACTION", "Diesel fuel tank refilled");
+    return true;
+}
+
+bool EmergencySystem::refillCoolant(ReactorState& state) {
+    if (state.coolant >= RC::INITIAL_COOLANT) {
+        std::ostringstream oss;
+        oss << Color::YELLOW << "Coolant already full." << Color::RESET << "\n";
+        state.addMessage(oss.str());
+        return false;
+    }
+    state.coolant = std::min(RC::INITIAL_COOLANT, state.coolant + RC::COOLANT_REFILL_AMOUNT);
+    state.score = std::max(0, state.score - RC::REFILL_PENALTY);
+    std::ostringstream oss;
+    oss << Color::GREEN << "Coolant makeup: +" << RC::COOLANT_REFILL_AMOUNT << "% " << Color::RESET
+        << Color::RED << "(-" << RC::REFILL_PENALTY << " pts, takes a turn)" << Color::RESET << "\n";
+    state.addMessage(oss.str());
+    state.addLogEntry("ACTION", "Coolant makeup pumped in");
+    return true;
 }

@@ -8,27 +8,39 @@ void ContainmentSystem::update(ReactorState& state) {
     // Containment degrades under stress
     double stressFactor = 0.0;
 
-    // High temperature stresses containment
-    if (state.temperature > state.currentDifficulty.scramTemperature * 0.7) {
-        stressFactor += (state.temperature - state.currentDifficulty.scramTemperature * 0.7) / 500.0;
+    // Running hot stresses containment (integrity points lost per turn)
+    double stressTemp = state.currentDifficulty.scramTemperature * RC::CONTAINMENT_TEMP_STRESS_START;
+    if (state.temperature > stressTemp) {
+        stressFactor += (state.temperature - stressTemp) / 100.0;
     }
 
-    // High steam pressure stresses containment
-    if (state.steamPressure > RC::MAX_STEAM_PRESSURE * 0.8) {
-        stressFactor += (state.steamPressure - RC::MAX_STEAM_PRESSURE * 0.8) / 100.0;
+    // Steam pressure above the relief setpoint
+    if (state.steamPressure > RC::CRITICAL_PRESSURE) {
+        stressFactor += (state.steamPressure - RC::CRITICAL_PRESSURE) / 10.0;
     }
 
     // High radiation indicates containment stress
     if (state.radiationLevel > RC::WARNING_RADIATION) {
-        stressFactor += (state.radiationLevel - RC::WARNING_RADIATION) / 1000.0;
+        stressFactor += (state.radiationLevel - RC::WARNING_RADIATION) / 200.0;
     }
 
-    // Apply degradation
     if (stressFactor > 0) {
-        state.containmentIntegrity = std::max(0.0, state.containmentIntegrity - stressFactor * 0.1);
+        state.containmentIntegrity = std::max(0.0, state.containmentIntegrity - stressFactor);
     } else {
-        // Slow natural recovery when not under stress
-        state.containmentIntegrity = std::min(RC::MAX_CONTAINMENT, state.containmentIntegrity + 0.05);
+        state.containmentIntegrity = std::min(RC::MAX_CONTAINMENT, state.containmentIntegrity + RC::CONTAINMENT_RECOVERY);
+    }
+
+    if (state.containmentIntegrity <= 0.0 && !state.gameOver) {
+        std::ostringstream oss;
+        oss << "\n" << Color::BG_RED << Color::WHITE << Color::BOLD
+            << "!!! CONTAINMENT FAILURE !!! Radioactive release. Game Over."
+            << Color::RESET << "\n";
+        state.addAlertMessage(oss.str());
+        state.addLogEntry("CRITICAL", "Containment failure - radioactive release");
+        state.gameOver = true;
+        state.gameOverReason = "Containment failure";
+        state.running = false;
+        return;
     }
 
     // Containment warnings
@@ -42,15 +54,17 @@ void ContainmentSystem::update(ReactorState& state) {
             state.addAlertMessage(oss.str());
         }
         state.addLogEntry("CRITICAL", "Containment breach detected");
-
-        // Breach increases radiation significantly
-        state.radiationLevel *= 2.0;
     } else if (state.containmentIntegrity < RC::CONTAINMENT_WARNING) {
         std::ostringstream oss;
         oss << Color::RED << "\xe2\x9a\xa0 CONTAINMENT WARNING: Integrity at "
             << std::fixed << std::setprecision(1) << state.containmentIntegrity << "%"
             << Color::RESET << "\n";
         state.addMessage(oss.str());
+    }
+
+    // A breach leaks radiation (see RadiationSystem) and costs points every turn
+    if (state.containmentBreach) {
+        state.score = std::max(0, state.score - RC::BREACH_PENALTY * state.currentDifficulty.scoreMultiplier);
     }
 
     // Recovery from breach
