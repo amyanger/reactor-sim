@@ -22,7 +22,8 @@ CLAUDE.md
 build/
 cmake-build-*/
 
-# Game save files
+# Game save files (current fallback dir, and pre-v2 locations)
+.reactor-sim/
 .reactor_highscore*
 .reactor_achievements
 .reactor_save

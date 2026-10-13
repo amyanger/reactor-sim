@@ -128,10 +128,10 @@ namespace RC {
     static constexpr int BREACH_PENALTY        = 25;   // per turn while breached
     static constexpr double RECOVERY_ELECTRIC_MW = 300.0;  // output that counts as recovered after a SCRAM
 
-    // File paths
-    static constexpr const char* HIGH_SCORE_FILE    = ".reactor_highscore";
-    static constexpr const char* ACHIEVEMENTS_FILE  = ".reactor_achievements";
-    static constexpr const char* SAVE_FILE          = ".reactor_save";
+    // File names inside the data directory (see PersistenceSystem::dataPath)
+    static constexpr const char* HIGH_SCORE_FILE    = "highscore";  // suffixed with _<difficulty>
+    static constexpr const char* ACHIEVEMENTS_FILE  = "achievements";
+    static constexpr const char* SAVE_FILE          = "save";
 
     // Misc
     static constexpr int MAX_LOG_ENTRIES = 100;
