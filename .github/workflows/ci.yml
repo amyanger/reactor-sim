@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cxx: g++
+          - os: macos-latest
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    env:
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: make
+
+      - name: Unit tests
+        run: make test
+
+      # Newer Ubuntu kernels use more ASLR entropy than older ASan runtimes support
+      - name: Lower ASLR entropy for ASan
+        if: runner.os == 'Linux'
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Sanitizer build and tests
+        run: make clean && make asan

@@ -87,14 +87,17 @@ void RandomEventSystem::process(ReactorState& state) {
         }
 
     } else if (roll < 80) {
-        double bonus = 50.0 + (state.rng() % 50);
-        state.score += static_cast<int>(bonus);
-        std::ostringstream oss;
-        oss << Color::GREEN << Color::BOLD
-            << "\xe2\x9c\xa8 EFFICIENCY BOOST: +" << static_cast<int>(bonus) << " points!"
-            << Color::RESET << "\n";
-        state.addMessage(oss.str());
-        state.addLogEntry("EVENT", "Efficiency improvement bonus");
+        // Efficiency bonuses only go to a plant that is actually generating
+        if (state.electricityOutput > 0.0) {
+            double bonus = 50.0 + (state.rng() % 50);
+            state.score += static_cast<int>(bonus);
+            std::ostringstream oss;
+            oss << Color::GREEN << Color::BOLD
+                << "\xe2\x9c\xa8 EFFICIENCY BOOST: +" << static_cast<int>(bonus) << " points!"
+                << Color::RESET << "\n";
+            state.addMessage(oss.str());
+            state.addLogEntry("EVENT", "Efficiency improvement bonus");
+        }
 
     } else if (roll < 90) {
         double bonus = 10.0 + (state.rng() % 15);
