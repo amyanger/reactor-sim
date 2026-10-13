@@ -1,203 +1,162 @@
-☢️ C++ Nuclear Reactor Simulator
+# C++ Nuclear Reactor Simulator
 
-A feature-rich, interactive C++ nuclear reactor simulation that lets you try your hand as a reactor operator. Manage control rods, coolant, turbines, and emergency systems while dealing with random events, xenon poisoning, weather, and grid demand. Try not to melt the core!
+A turn-based terminal game where you run a nuclear power plant. You set the control rods, keep the coolant topped up, run the turbine, and try to match grid demand while random events, weather, and xenon poisoning work against you. Push too hard and the core trips or melts down.
 
----
+## Building
 
-## 🚀 Features
+You need a C++17 compiler (clang or gcc) and `make`. It builds on macOS and Linux.
 
-### Core Gameplay
-- **Real-time command-line gameplay**: Control rods, coolant, turbines, and reactor safety
-- **4 Difficulty levels**: Easy, Normal, Hard, and Nightmare with unique parameters
-- **Scoring system**: Points for survival, power generation, and grid satisfaction with difficulty multipliers
-- **High score tracking**: Persistent high scores per difficulty level
-
-### Reactor Systems
-- **Turbine Hall**: Generate electricity from steam with RPM and pressure simulation
-- **Emergency Core Cooling System (ECCS)**: Emergency coolant injection with cooldown
-- **Diesel Generator**: Backup power source with fuel management and auto-start
-- **Xenon-135 Poisoning**: Realistic neutron absorption mechanics
-- **Containment Integrity**: Structural stress, degradation, and breach detection
-- **Radiation Monitoring**: 3-tier radiation warnings with exposure tracking
-- **Fuel burnup & auto SCRAM**: Realistic fuel depletion and emergency shutdowns
-
-### Environmental Systems
-- **Dynamic Weather**: 6 weather types (Clear, Cloudy, Rain, Storm, Heatwave, Cold Snap) affecting cooling and events
-- **Power Grid Demand**: Time-of-day demand simulation with satisfaction scoring
-- **Steam Pressure**: Realistic pressure buildup with relief valve and pipe rupture mechanics
-
-### Random Events (11 types)
-- Coolant leaks, power surges, pump failures
-- Steam leaks, turbine trips, xenon spikes
-- Bonus events: efficiency boost, coolant delivery, maintenance crew
-
-### Meta Features
-- **16 Achievements**: Unlock achievements for various accomplishments
-- **Save/Load**: Continue your game later
-- **Operator Tips**: Contextual tips based on reactor state
-- **Event Log**: Track all reactor events and operator actions
-- **Statistics**: Detailed session stats tracking
-- **Pause**: Pause simulation while reviewing data
-- **Sound effects**: Terminal beep alerts for warnings and emergencies
-- **Colorful ASCII dashboard**: Real-time reactor, turbine, grid, and weather status
-
----
-
-## 🛠️ Getting Started
-
-### 1. Clone This Repo
 ```bash
 git clone https://github.com/amyanger/reactor-sim.git
 cd reactor-sim
-```
-
-### 2. Compile the Code
-```bash
-# Using Make
-make
-
-# Or compile manually
-g++ -std=c++11 -Wall -Wextra -Isrc src/*.cpp -o reactor
-
-# Windows (MSYS2 MinGW)
-PATH="/c/msys64/mingw64/bin:$PATH" make
-```
-
-### 3. Run the Simulator
-```bash
+make          # builds ./reactor
 ./reactor
 ```
 
----
+Other targets:
 
-## 🎮 How to Play
+| Target | What it does |
+|--------|--------------|
+| `make test` | Builds and runs the unit tests |
+| `make debug` | Unoptimized build with debug symbols |
+| `make asan` | Builds with AddressSanitizer and UBSan, then runs the tests |
+| `make clean` | Removes `build/` and the binary |
 
-### Commands
+Objects go in `build/`. Run `make clean` when switching between `debug`, `asan`, and the normal build.
+
+## How to play
+
+Each turn you type a command and press Enter. Pressing Enter on its own, or entering a rod position, advances one turn (6 minutes of plant time).
+
+- **Control rods.** Enter a number from 0 to 100 (a trailing `%` is fine) to set the rod target. 100 is fully inserted. The rods move toward the target at most 5% per turn, so big changes take several turns.
+- **Startup.** The plant starts at 50% power with rods at 62%. The core has no xenon yet, so it is more reactive than it will be later. Withdraw rods slowly at first. Pulling them hard on turn 1 will trip the reactor on overpower.
+- **Xenon.** Xenon builds up from iodine as you run at power and eats into your reactivity. After a SCRAM it keeps rising for a while before it decays, so restarting soon after a trip needs rods further out than before.
+- **Decay heat.** A shut-down core still makes heat. Keep the pumps powered (turbine or diesel) and the coolant up after a trip, or the temperature will climb.
+- **Grid demand.** Demand follows the time of day and drifts between about 200 and 1000 MW. You score by delivering electricity up to demand, get a bonus for staying within 95 to 110% of it, and lose points for badly under- or over-supplying.
+- **Refills cost you.** Coolant (`r`, +40%) costs 50 points and a turn. Diesel fuel (`df`) costs 25 points and a turn. ECCS costs 100 points and then needs 10 turns to recharge.
+- **SCRAM.** The reactor trips automatically on high temperature, high neutron flux (130% power), or prompt criticality. A trip costs 1000 points. Type `reset` once the core has cooled below 90% of the SCRAM temperature, then withdraw rods and bring the turbine back with `t`.
+- **Game over.** The game ends if the core passes the meltdown temperature or containment integrity reaches 0%. Neither can be reset.
+
+### Controls
+
 | Command | Action |
 |---------|--------|
-| `0-100` | Set control rod insertion percentage |
-| `r` | Refill coolant (-50 points) |
+| `0`-`100` | Set control rod target (%) |
+| Enter | Advance one turn |
+| `r` | Refill coolant (costs a turn and 50 points) |
 | `t` | Toggle turbine online/offline |
 | `e` | Activate ECCS emergency cooling |
-| `d` | Toggle diesel generator |
-| `df` | Refill diesel fuel |
+| `d` | Start or stop the diesel generator |
+| `df` | Refill diesel fuel (costs a turn and 25 points) |
 | `da` | Toggle diesel auto-start |
-| `p` / `pause` | Pause/resume simulation |
-| `s` / `save` | Save game |
-| `l` / `load` | Load saved game |
-| `a` | View achievements |
-| `stats` | View session statistics |
-| `log` | View event log |
-| `sound` | Toggle sound effects |
+| `reset` | Reset after a SCRAM |
+| `p` / `pause` | Pause or resume. Plant commands are blocked while paused |
+| `s` / `save` | Save the game |
+| `l` / `load` | Load the saved game |
+| `a` | Show achievements |
+| `stats` | Show session statistics |
+| `log` | Show the operator log |
+| `sound` | Toggle terminal bell alerts |
 | `tips` | Toggle operator tips |
-| `h` / `help` | Display help screen |
-| `q` | Quit simulation |
-| `reset` | Restart after SCRAM |
+| `h` / `help` | Show help |
+| `q` / `quit` | Quit |
 
-### Tips
-- **Control Rods**: 0% = max power (risky!), 100% = safest (low power)
-- **Turbine**: Keep temperature around 500°C for optimal electricity generation
-- **ECCS**: Save it for emergencies — 10 turn cooldown after use
-- **Xenon**: Watch for xenon buildup at high power levels
-- **Grid**: Match power output to demand for bonus points
-- **Weather**: Storms can cause lightning strikes; heatwaves reduce cooling
+Commands are case-insensitive. Unknown input shows a message and does not advance the turn.
 
----
+## Difficulty levels
 
-## 🏆 Achievements
+| Difficulty | Fuel burn (%/turn at full power) | Coolant leak (%/turn) | Event chance | SCRAM temp | Meltdown temp | Score multiplier |
+|------------|------|------|---------|--------|--------|----|
+| Easy       | 0.05 | 0.15 | 1 in 15 | 1000°C | 1600°C | 1x |
+| Normal     | 0.10 | 0.30 | 1 in 10 | 900°C  | 1400°C | 2x |
+| Hard       | 0.15 | 0.50 | 1 in 7  | 850°C  | 1250°C | 3x |
+| Nightmare  | 0.20 | 0.70 | 1 in 5  | 800°C  | 1100°C | 5x |
 
-| Achievement | Description |
-|-------------|-------------|
+Harder levels also have lower turbine efficiency and faster xenon buildup.
+
+## Plant systems
+
+- **Turbine.** Converts the heat removed from the core into electricity. Efficiency peaks at about 550°C. While it spins above 1800 RPM it also powers the main coolant pumps.
+- **Diesel generator.** Powers the pumps when the turbine can't. With auto-start on, it starts when the core needs cooling and the turbine is down, and stops when it is no longer needed. It does not feed the grid.
+- **ECCS.** Injects coolant and drops the core temperature by up to 100°C.
+- **Steam pressure.** Rises with temperature, and faster with the turbine offline. The relief valve opens at 130 bar and vents heat and coolant. Above 160 bar a pipe ruptures.
+- **Containment.** Wears down under high temperature and pressure and recovers slowly when the plant is calm. A breach raises radiation and costs points every turn. At 0% the game is over.
+- **Radiation.** Tracks dose rate and cumulative exposure, with warnings at 100, 500, and 2000 mSv/h.
+- **Weather.** Clear, cloudy, rain, storm, heatwave, and cold snap. Weather changes cooling and how often events happen. Storms can cause lightning strikes.
+- **Random events.** Nine kinds: coolant leak, power surge, pump failure, xenon spike, steam leak, turbine trip, efficiency boost, coolant delivery, and maintenance crew.
+
+## Simulation model
+
+The physics is simplified and tuned for play. It borrows the structure of real reactor models but the numbers are chosen to make an interesting game.
+
+- Reactivity is tracked in dollars, so 1$ is prompt critical. It is the sum of excess reactivity, minus rod worth, xenon, fuel burnup, and a negative temperature coefficient.
+- Rod worth follows an S-curve, so rods are most effective in the middle of their travel.
+- Neutron population uses point kinetics with a prompt-jump approximation, run in 10 substeps per turn so temperature feedback can act during a transient. A small source term lets a shut-down core restart.
+- Iodine-135 decays into xenon-135, which decays and is also burned out by neutron flux. This produces an equilibrium level at power and a xenon peak after shutdown.
+- Cooling is Newtonian: heat removed is proportional to the gap between core and heat sink temperature, scaled by pump power, coolant level, and weather.
+- Decay heat follows a fraction of recent fission power and fades slowly after shutdown.
+
+The tuning constants are in `src/constants.h`.
+
+## Achievements
+
+| Achievement | Condition |
+|-------------|-----------|
 | First Steps | Complete 10 turns |
 | Survivor | Complete 50 turns |
 | Veteran Operator | Complete 100 turns |
 | Marathon Runner | Complete 500 turns |
-| Power Player | Generate 100 MW·h |
-| Energy Baron | Generate 500 MW·h |
-| Cool Under Pressure | Recover from 3 SCRAMs |
-| Perfect Run | 50 turns without SCRAM |
-| Xenon Master | Handle xenon poisoning 5 times |
+| Power Player | Generate 5,000 MWh |
+| Energy Baron | Generate 25,000 MWh |
+| Cool Under Pressure | Restore 300+ MW output after 3 SCRAMs |
+| Perfect Run | 50 turns without a SCRAM |
+| Xenon Master | Ride out 5 xenon transients |
 | Nightmare Survivor | 25 turns on Nightmare |
-| Electrician | Max turbine output for 10 turns |
-| Grid Hero | 95%+ grid satisfaction for 20 turns |
+| Electrician | 90%+ of max turbine output for 10 turns |
+| Grid Hero | Supply within 90 to 110% of demand for 20 turns in a row |
 | Weather Warrior | Survive 5 storms |
 | Diesel Dependent | 50+ turns on diesel power |
-| Pressure Perfect | No relief valve use in 50 turns |
-| Radiation Safe | Low radiation for 100 turns |
+| Pressure Perfect | 50 turns generating without opening the relief valve |
+| Radiation Safe | Radiation below 100 mSv/h for 100 turns in a row |
 
----
+## Save files
 
-## 📊 Difficulty Levels
+Saves, high scores (one per difficulty), and unlocked achievements are stored in `$XDG_DATA_HOME/reactor-sim/`, or `~/.local/share/reactor-sim/` if `XDG_DATA_HOME` is not set. If neither is available they go in `./.reactor-sim/`.
 
-| Difficulty | Fuel Loss | Coolant Loss | Event Chance | SCRAM Temp | Score Multiplier |
-|------------|-----------|--------------|--------------|------------|------------------|
-| Easy | 0.05/turn | 0.15/turn | 1 in 15 | 1200°C | 1x |
-| Normal | 0.10/turn | 0.30/turn | 1 in 10 | 1000°C | 2x |
-| Hard | 0.15/turn | 0.50/turn | 1 in 7 | 800°C | 3x |
-| Nightmare | 0.20/turn | 0.70/turn | 1 in 5 | 600°C | 5x |
+Save files are plain text with a version header. A save that is truncated, out of range, or from an unknown version is rejected and the current game is left as it was.
 
----
-
-## 📁 Project Structure
+## Project layout
 
 ```
 src/
-  types.h              — Enums, colors, weather/achievement/difficulty data
-  constants.h          — All physics/threshold/scoring constants
-  reactor_state.h      — Shared ReactorState struct, message queue
-  xenon.h/.cpp         — Xenon-135 build/decay system
-  turbine.h/.cpp       — Turbine RPM, steam pressure, electricity
-  emergency.h/.cpp     — ECCS + diesel generator
-  radiation.h/.cpp     — Radiation level + exposure tracking
-  containment.h/.cpp   — Containment integrity + breach detection
-  weather.h/.cpp       — Dynamic weather transitions
-  grid.h/.cpp          — Power grid demand simulation
-  scoring.h/.cpp       — Statistics tracking
-  achievements.h/.cpp  — 16 achievement checks + unlock
-  persistence.h/.cpp   — Save/load/highscore file I/O
-  events.h/.cpp        — 11 random event types
-  safety.h/.cpp        — SCRAM + meltdown detection
-  physics.h/.cpp       — Core physics orchestrator
-  renderer.h/.cpp      — All display/UI code
-  input.h/.cpp         — Command parsing + dispatch
-  reactor.h/.cpp       — Game loop orchestrator
-  main.cpp             — Entry point + difficulty selection
-Makefile               — Build configuration
+  main.cpp             Entry point and difficulty selection
+  reactor.h/.cpp       Game loop
+  reactor_state.h      Shared ReactorState struct and message queue
+  types.h              Enums, colors, weather, achievement, and difficulty tables
+  constants.h          Physics, threshold, and scoring constants
+  physics.h/.cpp       Reactivity, kinetics, heat balance, turn orchestration
+  xenon.h/.cpp         Iodine and xenon chain
+  turbine.h/.cpp       Turbine RPM, steam pressure, electricity
+  emergency.h/.cpp     ECCS, diesel generator, refills
+  safety.h/.cpp        SCRAM, meltdown, reset
+  containment.h/.cpp   Containment integrity and breach
+  radiation.h/.cpp     Dose rate and exposure
+  weather.h/.cpp       Weather changes and lightning
+  grid.h/.cpp          Grid demand and supply scoring
+  events.h/.cpp        Random events
+  scoring.h/.cpp       Score and session statistics
+  achievements.h/.cpp  Achievement checks
+  persistence.h/.cpp   Save, load, high scores, data directory
+  input.h/.cpp         Command parsing and dispatch
+  renderer.h/.cpp      Dashboard and screens
+tests/                 doctest unit tests, run with `make test`
+.github/workflows/     CI that builds and tests on Ubuntu and macOS
 ```
 
----
+## Disclaimer
 
-## 📚 Technical Details
+This is a game. Don't use it as a reference for operating a real reactor.
 
-- **C++11** compatible
-- Multi-file architecture with shared state pattern
-- Uses modern `<random>` for RNG (std::mt19937)
-- ANSI color codes for terminal output
-- Persistent storage for saves, high scores, and achievements
-- ~2,500 lines across 36 source files
+## License
 
----
-
-## ✨ Contributions
-
-PRs and suggestions welcome! Open an issue or submit a PR.
-
----
-
-## ⚠️ Disclaimer
-
-This simulator is for learning and entertainment only.
-Do not use as a reference for real nuclear power plant operation.
-
----
-
-## 👤 Author
-
-**Arjun Myanger**
-GitHub: https://github.com/amyanger
-
----
-
-## 🏷️ License
-
-MIT License. Go wild, but don't blame me if you melt your keyboard.
+MIT. See [LICENSE](LICENSE).
