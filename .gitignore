@@ -2,6 +2,7 @@
 reactor
 reactor.exe
 reactor_test
+*.dSYM/
 *.o
 *.out
 
